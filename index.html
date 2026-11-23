@@ -1065,7 +1065,7 @@ function setStatus(){
 }
 async function apiGet(){ const r=await fetch(API+"?action=get"+(READKEY?"&key="+encodeURIComponent(READKEY):"")+"&t="+Date.now()); return r.json(); }
 async function apiPost(body){ const r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)}); return r.json(); }
-const busy=()=>ov.classList.contains("show")||!!drag;
+const busy=()=>ov.classList.contains("show")||!!drag||saving;
 async function sync(force){
   if(!API){ setStatus(); return; }
   try{
@@ -1073,7 +1073,7 @@ async function sync(force){
     if(d.error==="key"){ READKEY=null; try{localStorage.removeItem("bbn-rk");}catch(e){} if(!busy()) readKeyDialog(); return; }
     if(d.error) throw new Error(d.error);
     lastSync=Date.now();
-    if(force || (d.version!==VERSION && !busy())){ VERSION=d.version||0; if(d.state) state=normalize(d.state); render(); }
+    if(force || (d.version!==VERSION && !busy())){ VERSION=d.version||0; if(d.state) state=normalize(d.state); BASE=clone(state); render(); }
     if(!d.state && force && !VERSION) toast("Nog geen gegevens in de Google Sheet. Log in en voeg het eerste evenement toe.");
   }catch(e){ const s=$("#status"); s.className="status warn"; s.textContent="Geen verbinding met de Google Sheet"; return; }
   setStatus();
@@ -1102,18 +1102,62 @@ function readKeyDialog(){
     if(d.error){ $("#rerr").textContent=d.error==="key"?"Wachtwoord klopt niet.":"Geen verbinding."; return; }
     try{localStorage.setItem("bbn-rk",READKEY);}catch(e){} close(); sync(true); };
 }
+// ---------- samenvoegen bij gelijktijdig bewerken ----------
+const clone=o=>JSON.parse(JSON.stringify(o));
+let BASE=null, saving=false;
+const J=x=>JSON.stringify(x===undefined?null:x);
+function threeWay(base, mine, theirs){
+  const out=clone(theirs), conflicts=[];
+  const bm=new Map((base.events||[]).map(e=>[e.id,e])), mm=new Map((mine.events||[]).map(e=>[e.id,e])), tm=new Map((theirs.events||[]).map(e=>[e.id,e]));
+  const applyEv=(id,m)=>{ const i=out.events.findIndex(e=>e.id===id); if(!m){ if(i>=0) out.events.splice(i,1); } else if(i>=0) out.events[i]=clone(m); else out.events.push(clone(m)); };
+  new Set([...bm.keys(),...mm.keys()]).forEach(id=>{ const b=bm.get(id), m=mm.get(id), t=tm.get(id);
+    if(J(b)===J(m)) return;                       // ik heb dit niet gewijzigd
+    if(J(t)===J(b) || J(t)===J(m)) applyEv(id,m);  // de ander niet (of hetzelfde) → mijn versie
+    else conflicts.push({id, mine:m, theirs:t, name:(m||t||b).name, apply:()=>applyEv(id,m)}); });
+  out.settings=out.settings||{};
+  ["hol","summerOn","summerCheck","repOv"].forEach(k=>{ const B=(base.settings||{})[k]||{}, M=(mine.settings||{})[k]||{}; const T=out.settings[k]=out.settings[k]||{};
+    new Set([...Object.keys(B),...Object.keys(M)]).forEach(x=>{ if(J(B[x])===J(M[x])) return; if(M[x]===undefined) delete T[x]; else T[x]=clone(M[x]); }); });
+  if(J((base.settings||{}).vac)!==J((mine.settings||{}).vac)) out.settings.vac=clone(mine.settings.vac);
+  out.updated=mine.updated;
+  return {out, conflicts};
+}
+function evSummary(e){ if(!e) return "verwijderd";
+  const c=CATS[e.cat]||CATS.evenement, g=orgOf(e,nextOccY(e)), st=ORG[g.org];
+  return [c.nl, e.unplanned?"nog in te plannen"+(e.wishYear?" ("+e.wishYear+")":""):(e.tbd?"maand "+e.date.slice(0,7):fmtS(dn(e.date))), (+e.prepWeeks?e.prepWeeks+" wk voorbereiding":""), (!noTeam(e)&&st?st.nl+(g.contact?" · "+g.contact:""):""), e.note||""].filter(Boolean).join(" · "); }
+function resolveConflicts(conflicts){
+  return new Promise(res=>{
+    dlg.innerHTML=`<h3>Tegelijk aangepast</h3><form id="cf"><div class="body" style="display:block">
+      <div class="hint" style="margin-bottom:10px">Iemand anders heeft net hetzelfde aangepast als jij. Kies per onderdeel welke versie moet blijven. Alle andere wijzigingen zijn al samengevoegd.</div>
+      ${conflicts.map((c,i)=>`<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <b>${esc(c.name)}</b>
+        <label class="chk" style="margin-top:6px"><input type="radio" name="c${i}" value="mine" checked> <span><b>Mijn versie:</b> ${esc(evSummary(c.mine))}</span></label>
+        <label class="chk"><input type="radio" name="c${i}" value="theirs"> <span><b>Versie van de ander:</b> ${esc(evSummary(c.theirs))}</span></label></div>`).join("")}
+    </div><div class="foot"><span class="sp"></span><button class="btn primary">Opslaan</button></div></form>`;
+    ov.classList.add("show");
+    $("#cf").onsubmit=ev=>{ ev.preventDefault(); const f=$("#cf"); const picks=conflicts.map((c,i)=>f.querySelector(`input[name=c${i}]:checked`).value); close(); res(picks); };
+  });
+}
 async function commit(){
   state.updated = ds(TODAY);
   render();
   if(!API){ toast("Niet gekoppeld: wijziging alleen op dit scherm"); return; }
   if(!PW){ pendingSave=true; loginDialog(); return; }
+  saving=true; let merged=false;
   try{
-    const d=await apiPost({action:"save",pw:PW,base:VERSION,state});
-    if(d.ok){ VERSION=d.version; lastSync=Date.now(); setStatus(); toast("Opgeslagen voor iedereen"); return; }
-    if(d.error==="auth"){ PW=null; try{localStorage.removeItem("bbn-pw");}catch(e){} setStatus(); pendingSave=true; loginDialog(); return; }
-    if(d.error==="conflict"){ toast("Iemand anders sloeg net iets op. Je laatste wijziging is niet bewaard — de nieuwste versie staat nu op je scherm."); VERSION=d.version; state=normalize(d.state); render(); return; }
-    toast("Opslaan mislukt: "+d.error);
+    for(let attempt=0; attempt<4; attempt++){
+      const d=await apiPost({action:"save",pw:PW,base:VERSION,state});
+      if(d.ok){ VERSION=d.version; BASE=clone(state); lastSync=Date.now(); setStatus(); toast(merged?"Opgeslagen — samengevoegd met de wijzigingen van iemand anders":"Opgeslagen voor iedereen"); return; }
+      if(d.error==="auth"){ PW=null; try{localStorage.removeItem("bbn-pw");}catch(e){} setStatus(); pendingSave=true; loginDialog(); return; }
+      if(d.error==="conflict"){
+        const theirs=normalize(d.state), {out,conflicts}=threeWay(BASE||theirs, state, theirs);
+        if(conflicts.length){ saving=false; const picks=await resolveConflicts(conflicts); saving=true; conflicts.forEach((c,i)=>{ if(picks[i]==="mine") c.apply(); }); }
+        VERSION=d.version; BASE=clone(theirs); state=out; merged=true; render(); continue;
+      }
+      toast("Opslaan mislukt: "+d.error); return;
+    }
+    toast("Opslaan lukte niet: er wordt erg druk tegelijk gewijzigd. Probeer het zo nog eens."); sync(true);
   }catch(e){ toast("Opslaan mislukt: geen verbinding met de Google Sheet"); }
+  finally{ saving=false; }
 }
 
 // ---------- drag to change preparation time ----------
@@ -1180,7 +1224,7 @@ if(MIGRATE_ORG){ state.events.forEach(e=>{ if(+e.recur>0 && (e.org||e.contact||e
   delete e.org; delete e.contact; delete e.team; } }); }
 render();
 const sc=$("#scroller"); sc.scrollLeft=Math.max(0,(TODAY-START)*ui.px-120);
-setStatus(); sync(true); setInterval(()=>sync(false), 60000);
+BASE=clone(state); setStatus(); sync(true); setInterval(()=>sync(false), 60000);
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) sync(false); });
 })();
 </script>
