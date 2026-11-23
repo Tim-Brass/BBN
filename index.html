@@ -96,6 +96,19 @@ body.dragging,body.dragging *{cursor:ew-resize!important;user-select:none}
 .peryear .py2:last-child{border-bottom:0}
 .peryear .py2 select,.peryear .py2 input{min-width:0;width:100%;padding:5px 7px}
 .peryear .py select,.peryear .py input[type=text]{padding:5px 7px;border:1px solid #d6d2c7;border-radius:6px;min-width:0}
+.ev.urg-red{box-shadow:0 0 0 2.5px #C8372D,0 0 0 5px rgba(200,55,45,.18)}
+.ev.urg-orange{box-shadow:0 0 0 2.5px #D9822B}
+.lab.urg-red{box-shadow:inset 4px 0 0 #C8372D;background:#FDF3F2!important}
+.lab.urg-orange{box-shadow:inset 4px 0 0 #D9822B;background:#FEF8F0!important}
+.lab .ubadge{font:700 10px/1 "Roboto Condensed",sans-serif;color:#fff;border-radius:3px;padding:3px 4px;flex:none;letter-spacing:.03em}
+.alert{display:none;margin:0 24px 12px;border-radius:10px;padding:10px 14px;align-items:center;gap:12px;font-size:14px;border:1px solid}
+.alert.show{display:flex}
+.alert.red{background:#FBE9E7;border-color:#efb8b2;color:#7e1f18}
+.alert.orange{background:#FDF0E1;border-color:#f1cf9f;color:#7a4a0c}
+.alert b{font-weight:700}
+.alert .sp{flex:1}
+.up li.urg{border-left:4px solid;padding-left:10px;margin-left:-14px}
+.upill{display:inline-block;font:700 10.5px "Roboto Condensed",sans-serif;letter-spacing:.05em;text-transform:uppercase;border-radius:20px;padding:2px 8px;color:#fff}
 .ev .t{position:absolute;left:calc(100% + 5px);color:var(--ink);font-weight:700;pointer-events:none}
 .ev:hover,.prep:hover{filter:brightness(1.08)}
 .empty{padding:40px;text-align:center;color:var(--muted)}
@@ -156,6 +169,7 @@ const CATS = {
   project:  {nl:"Project", s:"Project",           c:"#7A4FBF"},
   evenement:{nl:"Optreden / evenement", s:"Optreden", c:"#2E9E6B"},
   vereniging:{nl:"Vereniging", s:"Vereniging",       c:"#B08A1E"},
+  nietmuz:  {nl:"Niet-muzikale activiteit", s:"Niet-muz.", c:"#1A9A8F"},
   reces:    {nl:"Geen repetitie (reces)", s:"Reces", c:"#8A8A8A"}
 };
 const HOLS = [
@@ -222,6 +236,42 @@ const initials = n => (n||"").trim().split(/\s+/).filter(Boolean).map(w=>w[0]).s
 function whoBadge(e,y){ if(noTeam(e)) return ""; const o=orgOf(e,y), st=ORG[o.org];
   const t=`${st?st.nl:"Organisatie nog niet ingevuld"}${o.contact?" · aanspreekpunt: "+o.contact:""}${y?" ("+y+")":""}`;
   return `<span class="who ${o.org||"unk"}" title="${esc(t)}">${o.contact?esc(initials(o.contact)):"?"}</span>`; }
+const nonMusical = e => e.cat==="nietmuz" || e.cat==="reces";
+// ---------- urgentie ----------
+const URG = { red:{nl:"Urgent", c:"#C8372D", bg:"#FBE9E7"}, orange:{nl:"Binnenkort", c:"#D9822B", bg:"#FDF0E1"}, yellow:{nl:"Later", c:"#A77B00", bg:"#FBF3DA"} };
+const URG_RANK={red:0,orange:1,yellow:2};
+const daysTxt=d=>{ const n=d-TODAY; return n<0?`${-n} dagen geleden`:n===0?"vandaag":n===1?"morgen":`nog ${n} dagen`; };
+function urgencies(){
+  const out=[];
+  state.events.forEach(e=>{
+    if(e.cat==="reces") return;
+    const pw=+e.prepWeeks||0;
+    if(e.unplanned||!e.date){
+      const y=+e.wishYear, dl= y? ymd(y,0,1)-pw*7 : null;
+      const level = !y? "orange" : (dl-TODAY<=91? "red" : dl-TODAY<=365? "orange" : "yellow");
+      const txt = !y? "Nog geen datum en geen jaar gekozen — bespreken wanneer dit moet plaatsvinden"
+        : (dl<TODAY? `Datum had al vast moeten staan om ${y} te halen met ${pw} weken voorbereiding` : `Datum vastleggen vóór ${fmtS(dl)} (${daysTxt(dl)}) om begin ${y} nog ${pw} weken voorbereiding te hebben`);
+      out.push({e, y:null, kind:"plan", level, dl: dl??TODAY+365, txt});
+      return;
+    }
+    if(noTeam(e)) return;
+    occurrences(e).forEach(o=>{
+      const dl = pw? o.s-pw*7 : o.s;
+      if(o.e<TODAY || dl>=TODAY+365) return;
+      const g=orgOf(e,o.y); if(g.org==="ok") return;
+      const level = dl-TODAY<=91? "red" : "orange";
+      const what = g.org==="forming"? "Team is nog in vorming" : g.org==="none"? "Nog geen organisatieteam" : "Organisatie nog niet ingevuld";
+      const txt = dl<TODAY? `${what} — de voorbereiding is al begonnen (${fmtS(dl)})` : `${what} — team nodig vóór ${fmtS(dl)} (${pw?"start voorbereiding":"evenement"}, ${daysTxt(dl)})`;
+      out.push({e, y:o.y, s:o.s, kind:"team", level, dl, txt});
+    });
+  });
+  return out.sort((a,b)=>URG_RANK[a.level]-URG_RANK[b.level] || a.dl-b.dl);
+}
+let URGS=[];
+const urgKey=(id,y)=>id+"|"+(y??"");
+let URGMAP={};
+function urgOfEvent(e){ let best=null; URGS.forEach(u=>{ if(u.e.id===e.id && (!best||URG_RANK[u.level]<URG_RANK[best])) best=u.level; }); return best; }
+
 function occYears(ev){
   if(ev.unplanned || !ev.date) return [];
   const y0=+ev.date.slice(0,4), step=+ev.recur||0;
@@ -291,8 +341,11 @@ document.body.insertAdjacentHTML("beforeend",`
   <button class="btn" id="export">Exporteren</button>
   <div class="legend" id="legend"></div>
 </div>
+<div class="alert" id="alert"></div>
 <div class="wrap"><div class="scroller" id="scroller"><div class="grid" id="grid"></div></div></div>
 <div class="panels">
+  <div class="card" id="actCard" style="grid-column:1/-1;display:none;border-color:#efb8b2"><h2 style="color:#C8372D">Actie nodig<span class="chip" id="actChip" style="background:#FBE9E7;color:#9b2a22"></span></h2>
+    <p class="small" style="margin:-4px 0 8px">Evenementen waarvan de voorbereiding binnen 12 maanden start en de organisatie nog niet rond is, en evenementen die nog gepland moeten worden.</p><ul class="up" id="actList"></ul></div>
   <div class="card" id="openCard" style="grid-column:1/-1;display:none"><h2>Nog in te plannen<span class="chip" id="openChip"></span></h2><ul class="up" id="openList"></ul></div>
   <div class="card"><h2>Komende 12 maanden<span class="chip" id="todoChip" style="display:none"></span><span class="chip" id="teamChip" style="display:none;background:#FBE9E7;color:#9b2a22"></span></h2><ul class="up" id="upcoming"></ul></div>
   <div class="card"><h2>Repetities per jaar</h2><table class="yrs" id="yrs"></table>
@@ -303,6 +356,7 @@ document.body.insertAdjacentHTML("beforeend",`
 
 function render(){
   computeVacs(); REPS = computeReps();
+  URGS = urgencies().filter(u=>u.level!=="yellow"||u.kind==="plan"); URGMAP={}; URGS.forEach(u=>{ const k=urgKey(u.e.id,u.y); if(!URGMAP[k]||URG_RANK[u.level]<URG_RANK[URGMAP[k]]) URGMAP[k]=u.level; });
   const px=ui.px, W=Math.round((END-START)*px), X=d=>Math.round((d-START)*px);
   const grid=$("#grid"); let h="";
   // header
@@ -332,7 +386,7 @@ function render(){
   h+=`<div class="row"><div class="lab"><span class="dot" style="background:#E2B53A"></span><span class="nm" style="cursor:default">Schoolvakanties (zuid)</span></div><div class="track" style="width:${W}px">${bg}${vb}</div></div>`;
   // busy row: number of overlapping prep windows per week
   const vis = state.events.filter(e=>!ui.hidden[e.cat]);
-  const windows=[]; vis.filter(e=>e.cat!=="reces").forEach(e=>occurrences(e).forEach(o=>windows.push({a:o.s-(+e.prepWeeks||0)*7,b:o.e+1})));
+  const windows=[]; vis.filter(e=>!nonMusical(e)).forEach(e=>occurrences(e).forEach(o=>windows.push({a:o.s-(+e.prepWeeks||0)*7,b:o.e+1})));
   let busy=""; for(let d=START; d<END; d+=7){ const n=windows.filter(w=>w.a<d+7&&w.b>d).length;
     if(n) busy+=`<div class="busy" style="left:${X(d)}px;width:${Math.max(1,X(d+7)-X(d))}px;background:${["","#cfe3f2","#8fbde0","#f0a37f","#d2552b"][Math.min(4,n)]}" data-tip="busy|${d}|${n}"></div>`; }
   h+=`<div class="row"><div class="lab"><span class="dot" style="background:#f0a37f"></span><span class="nm" style="cursor:default" title="Hoeveel projecten tegelijk in voorbereiding of uitvoering zijn">Drukte</span></div><div class="track" style="width:${W}px">${bg}${busy}</div></div>`;
@@ -352,10 +406,12 @@ function render(){
       const pw=+e.prepWeeks||0;
       if(e.cat!=="reces"){ const a=o.s-pw*7; bars+=`<div class="prep" style="left:${X(a)}px;width:${pw?Math.max(2,X(o.s)-X(a)):0}px;color:${cat.c};background:repeating-linear-gradient(135deg,${cat.c}55 0 4px,${cat.c}18 4px 8px)" data-id="${e.id}" ${pw?`data-tip="ev|${e.id}|${o.s}|${o.e}|${o.tbd?"tbd":""}|${o.y}"`:""}><div class="grip" data-grip="${e.id}" data-s="${o.s}" title="Sleep om de voorbereidingstijd aan te passen"></div></div>`; }
       const w=Math.max(8,X(o.e+1)-X(o.s));
-      if(o.tbd){ bars+=`<div class="ev tbd" style="left:${X(o.s)}px;width:${w}px;background:${cat.c}1f;color:${cat.c}" data-id="${e.id}" data-tip="ev|${e.id}|${o.s}|${o.e}|tbd|${o.y}">?${px>=1.3?`<span class="t">${esc(e.name)} <span style="font-weight:400;color:var(--muted)">(datum nog plannen)</span></span>`:""}</div>`; return; }
-      bars+=`<div class="ev ${e.cat==="reces"?"reces":""}" style="left:${X(o.s)}px;width:${w}px;background:${cat.c}" data-id="${e.id}" data-tip="ev|${e.id}|${o.s}|${o.e}||${o.y}">${w>70?esc(e.name):""}${w<=70&&px>=1.3?`<span class="t">${esc(e.name)}</span>`:""}</div>`;
+      const uc=URGMAP[urgKey(e.id,o.y)]; const ucl=uc&&uc!=="yellow"?" urg-"+uc:"";
+      if(o.tbd){ bars+=`<div class="ev tbd${ucl}" style="left:${X(o.s)}px;width:${w}px;background:${cat.c}1f;color:${cat.c}" data-id="${e.id}" data-tip="ev|${e.id}|${o.s}|${o.e}|tbd|${o.y}">?${px>=1.3?`<span class="t">${esc(e.name)} <span style="font-weight:400;color:var(--muted)">(datum nog plannen)</span></span>`:""}</div>`; return; }
+      bars+=`<div class="ev ${e.cat==="reces"?"reces":""}${ucl}" style="left:${X(o.s)}px;width:${w}px;background:${cat.c}" data-id="${e.id}" data-tip="ev|${e.id}|${o.s}|${o.e}||${o.y}">${w>70?esc(e.name):""}${w<=70&&px>=1.3?`<span class="t">${esc(e.name)}</span>`:""}</div>`;
     });
-    h+=`<div class="row"><div class="lab"><span class="dot" style="background:${cat.c}"></span><span class="nm" data-edit="${e.id}" title="Bewerken">${esc(e.name)}</span>${whoBadge(e,nextOccY(e))}<span class="rec">${occurrences(e).some(o=>o.tbd&&o.e>=TODAY)?'<span title="Er zijn nog datums te plannen" style="color:#a77b00;font-weight:700">? </span>':""}${rec}</span></div><div class="track" style="width:${W}px">${bg}${bars}</div></div>`;
+    const ue=urgOfEvent(e), ul=ue&&ue!=="yellow"?ue:null;
+    h+=`<div class="row"><div class="lab${ul?" urg-"+ul:""}"><span class="dot" style="background:${cat.c}"></span><span class="nm" data-edit="${e.id}" title="Bewerken">${esc(e.name)}</span>${ul?`<span class="ubadge" style="background:${URG[ul].c}" title="${URG[ul].nl}: organisatie nog niet rond">!</span>`:""}${whoBadge(e,nextOccY(e))}<span class="rec">${occurrences(e).some(o=>o.tbd&&o.e>=TODAY)?'<span title="Er zijn nog datums te plannen" style="color:#a77b00;font-weight:700">? </span>':""}${rec}</span></div><div class="track" style="width:${W}px">${bg}${bars}</div></div>`;
   });
   if(open.length){
     h+=`<div class="row sec"><div class="lab" style="color:#a77b00">Nog in te plannen</div><div class="track" style="width:${W}px">${bg}</div></div>`;
@@ -363,7 +419,8 @@ function render(){
       if(y>=Y0&&y<=Y1){ const a=ymd(y,0,1), b=ymd(y+1,0,1);
         bar=`<div class="ev tbd" style="left:${X(a)+2}px;width:${X(b)-X(a)-4}px;background:${cat.c}12;color:${cat.c};text-align:left;padding-left:8px" data-id="${e.id}" data-tip="open|${e.id}">ergens in ${y} — ${esc(e.name)}</div>`; }
       else { const x=Math.max(0,X(TODAY)+8); bar=`<div class="ev tbd" style="left:${x}px;width:auto;background:#fff;color:#a08640;padding:0 8px" data-id="${e.id}" data-tip="open|${e.id}">nog geen jaar — klik om te plannen</div>`; }
-      h+=`<div class="row"><div class="lab"><span class="dot" style="background:${cat.c}"></span><span class="nm" data-edit="${e.id}" title="Bewerken">${esc(e.name)}</span>${whoBadge(e,null)}<span class="rec" style="color:#a77b00">te plannen</span></div><div class="track" style="width:${W}px">${bg}${bar}</div></div>`; });
+      const uo=URGMAP[urgKey(e.id,null)], ulo=uo&&uo!=="yellow"?uo:null;
+      h+=`<div class="row"><div class="lab${ulo?" urg-"+ulo:""}"><span class="dot" style="background:${cat.c}"></span><span class="nm" data-edit="${e.id}" title="Bewerken">${esc(e.name)}</span>${ulo?`<span class="ubadge" style="background:${URG[ulo].c}" title="${URG[ulo].nl}: nog plannen">!</span>`:""}${whoBadge(e,null)}<span class="rec" style="color:#a77b00">te plannen</span></div><div class="track" style="width:${W}px">${bg}${bar}</div></div>`; });
   }
   grid.innerHTML=h;
   // zoom buttons
@@ -375,6 +432,24 @@ function render(){
 }
 
 const hasSummer = y => VACS.some(v=>v.summer && new Date(v.s*DAY).getUTCFullYear()===y);
+function renderActions(){
+  const list=URGS.filter(u=>u.level!=="yellow");
+  const nRed=list.filter(u=>u.level==="red").length, nTeam=list.filter(u=>u.kind==="team").length, nPlan=list.filter(u=>u.kind==="plan").length;
+  const al=$("#alert");
+  if(list.length){
+    al.className="alert show "+(nRed?"red":"orange");
+    al.innerHTML=`<span style="font-size:18px">⚠</span><span><b>Actie nodig:</b> ${[nTeam?`${nTeam} ${nTeam===1?"evenement":"evenementen"} zonder rond organisatieteam (voorbereiding start binnen 12 maanden)`:"", nPlan?`${nPlan} nog in te plannen`:""].filter(Boolean).join(" · ")}${nRed?` — waarvan <b>${nRed} urgent</b>`:""}.</span><span class="sp"></span><button class="btn" id="toAct">Bekijken</button>`;
+  } else { al.className="alert"; al.innerHTML=""; }
+  $("#actCard").style.display=list.length?"block":"none";
+  $("#actChip").textContent= nRed? `${nRed} urgent` : `${list.length} open`;
+  $("#actList").innerHTML=list.map(u=>{ const c=CATS[u.e.cat]||CATS.evenement, U=URG[u.level], g=orgOf(u.e,u.y);
+    const when = u.kind==="plan" ? (u.e.wishYear?`ergens in ${u.e.wishYear}`:"geen jaar") : (()=>{ const m=new Date(u.s*DAY); const o=occurrences(u.e).find(x=>x.y===u.y); return o&&o.tbd? `${MONTHS[m.getUTCMonth()]} ${m.getUTCFullYear()}` : fmtS(u.s); })();
+    return `<li class="urg" style="border-left-color:${U.c}"><span><span class="upill" style="background:${U.c}">${U.nl}</span><div class="d" style="margin-top:4px">${when}</div></span>
+      <span><span class="pill" style="background:${c.c}">${c.s}</span><b data-edit="${u.e.id}" style="cursor:pointer">${esc(u.e.name)}</b>
+      <div class="kind" style="color:${U.c};font-weight:500">${u.txt}</div>
+      ${g.contact?`<div class="orgline">Aanspreekpunt: ${esc(g.contact)}</div>`:""}</span>
+      <span class="reps"><button class="btn" data-edit="${u.e.id}" style="padding:4px 10px">${u.kind==="plan"?"Datum kiezen":"Team regelen"}</button></span></li>`; }).join("");
+}
 function renderOpen(){
   const open=state.events.filter(e=>e.unplanned||!e.date).sort((a,b)=>(+a.wishYear||9999)-(+b.wishYear||9999)||a.name.localeCompare(b.name));
   $("#openCard").style.display=open.length?"block":"none"; $("#openChip").textContent=open.length===1?"1 evenement":`${open.length} evenementen`;
@@ -385,7 +460,7 @@ function renderOpen(){
       <span class="reps"><button class="btn" data-edit="${e.id}" style="padding:4px 10px">Datum kiezen</button></span></li>`; }).join("");
 }
 function renderPanels(){
-  renderOpen();
+  renderActions(); renderOpen();
   const until=TODAY+365, items=[];
   state.events.forEach(e=>{ const pw=+e.prepWeeks||0;
     occurrences(e).forEach(o=>{
@@ -405,13 +480,16 @@ function renderPanels(){
   items.sort((a,b)=>a.d-b.d);
   const nTodo=items.filter(i=>i.todo).length, chip=$("#todoChip");
   chip.style.display=nTodo?"inline-block":"none"; chip.textContent = nTodo===1? "1 datum nog te plannen" : `${nTodo} datums nog te plannen`;
-  const orgLine = it => { if(!it.e.id || noTeam(it.e)) return ""; const o=orgOf(it.e,it.y), st=ORG[o.org];
+  const orgLine = it => { if(!it.e.id || noTeam(it.e)) return ""; const o=orgOf(it.e,it.y), st=ORG[o.org]; const uc=URGMAP[urgKey(it.e.id,it.y)];
+    if(uc && uc!=="yellow") return `<div class="orgline" style="color:${URG[uc].c};font-weight:700">⚠ ${st?st.nl:"Organisatie niet ingevuld"} — team regelen${o.contact?` <span style="font-weight:400;color:var(--muted)">· aanspreekpunt ${esc(o.contact)}</span>`:""}</div>`;
     return `<div class="orgline">${whoBadge(it.e,it.y).replace('class="who','style="width:16px;height:16px;font-size:8px;border-width:1.5px;vertical-align:-3px;margin-right:4px" class="who')}<span class="st" style="color:${st?st.c:"#999"}">${st?st.nl:"Organisatie niet ingevuld"}</span>${o.contact?` · aanspreekpunt ${esc(o.contact)}`:""}</div>`; };
   const nNoTeam = new Set(items.filter(it=>it.e.id&&!noTeam(it.e)&&orgOf(it.e,it.y).org!=="ok").map(it=>it.e.id+"|"+it.y)).size;
   $("#upcoming").innerHTML = items.length? items.map(it=>{ if(it.e.cat==="zomer") return `<li><span class="d">${fmtS(it.d)}</span><span><span class="pill" style="background:#D9AE2E">Zomer</span><b data-summer="${it.vacStart}" style="cursor:pointer">${esc(it.e.name)}</b><div class="kind">${it.kind}</div></span><span class="reps">nog ${repsBetween(TODAY,it.d)} repetities</span></li>`;
     const c=CATS[it.e.cat]||CATS.evenement;
     if(it.todo) return `<li class="todo"><span class="d">${MONTHS[new Date(it.d*DAY).getUTCMonth()]} ${new Date(it.d*DAY).getUTCFullYear()}</span><span><span class="pill" style="background:${c.c}">${c.s}</span><b data-edit="${it.e.id}" style="cursor:pointer">${esc(it.e.name)}</b><div class="kind">${it.kind}</div>${orgLine(it)}</span><span class="reps" style="color:#a77b00;font-weight:700">datum plannen</span></li>`;
-    const reps = it.o? `${repsBetween(it.d,it.o)} repetities tot concert` : `nog ${repsBetween(TODAY,it.d)} repetities`;
+    const wk=n=>{ const w=Math.round(n/7); return w<=1?`${n} dagen`:`${w} weken`; };
+    const reps = it.e.cat==="nietmuz" ? (it.o? `${wk(it.o-it.d)} voorbereiding` : `over ${wk(it.d-TODAY)}`)
+      : it.o? `${repsBetween(it.d,it.o)} repetities tot concert` : `nog ${repsBetween(TODAY,it.d)} repetities`;
     return `<li><span class="d">${fmtS(it.d)}</span><span><span class="pill" style="background:${c.c}">${c.s}</span><b data-edit="${it.e.id}" style="cursor:pointer">${esc(it.e.name)}</b><div class="kind">${it.kind}</div>${orgLine(it)}</span><span class="reps">${it.e.cat==="reces"?"":reps}</span></li>`; }).join("")
     : `<li><span class="small">Niets gepland in de komende 12 maanden.</span></li>`;
   const tc=$("#teamChip"); tc.style.display=nNoTeam?"inline-block":"none"; tc.textContent = nNoTeam===1?"1 zonder vast team":`${nNoTeam} zonder vast team`;
@@ -444,7 +522,8 @@ document.addEventListener("mousemove",ev=>{
   else { const e=state.events.find(x=>x.id===p[1]); if(!e) return; const s=+p[2], en=+p[3], pw=+e.prepWeeks||0, c=CATS[e.cat]||CATS.evenement;
     const tbd=p[4]==="tbd"; const mo=new Date(s*DAY);
     html=`<b>${esc(e.name)}</b><br>${c.nl}<br>` + (tbd? `<span style="color:#F2CF63">Datum nog plannen</span> — indicatie: ${MONTHS[mo.getUTCMonth()]} ${mo.getUTCFullYear()}` : `${fmt(s)}${en>s?` t/m ${fmt(en)}`:""}`);
-    if(pw&&e.cat!=="reces") html+=`<br>Voorbereiding ${tbd?"uiterlijk ":""}vanaf ${fmtS(s-pw*7)} (${pw} wk)<br><b>${repsBetween(s-pw*7,s)}</b> repetities in de voorbereiding${tbd?" (als het begin van de maand)":""}`;
+    if(pw&&e.cat==="nietmuz") html+=`<br>Voorbereiding ${tbd?"uiterlijk ":""}vanaf ${fmtS(s-pw*7)} (${pw} wk)`;
+    else if(pw&&e.cat!=="reces") html+=`<br>Voorbereiding ${tbd?"uiterlijk ":""}vanaf ${fmtS(s-pw*7)} (${pw} wk)<br><b>${repsBetween(s-pw*7,s)}</b> repetities in de voorbereiding${tbd?" (als het begin van de maand)":""}`;
     if(tbd) html+=`<br><i>Klik om de datum in te vullen</i>`;
     if(!noTeam(e)){ const o=orgOf(e,+p[5]), st=ORG[o.org];
       html+=`<br><span style="color:${st?st.c:"#bbb"};font-weight:700">● ${st?st.nl:"Organisatie niet ingevuld"}</span>${o.contact?` — aanspreekpunt: <b>${esc(o.contact)}</b>`:""}`;
@@ -525,7 +604,7 @@ function editEvent(id){
     const d=f.date.value; if(!d){ $("#calc").textContent=""; return; } const s=dn(d), pw=+f.prepWeeks.value||0;
     if(f.tbd.checked && f.cat.value!=="reces"){ const m=new Date(s*DAY), ms=ymd(m.getUTCFullYear(),m.getUTCMonth(),1); $("#calc").innerHTML = `Datum nog te plannen — indicatie <b>${MONTHS[m.getUTCMonth()]} ${m.getUTCFullYear()}</b>.` + (pw? ` Voorbereiding start dan uiterlijk <b>${fmt(ms-pw*7)}</b> (${repsBetween(ms-pw*7,ms)} repetities tot begin van die maand).`:""); return; }
     $("#calc").innerHTML = f.cat.value==="reces" ? `Alle maandagen van ${fmtS(s)} t/m ${f.end.value?fmtS(dn(f.end.value)):fmtS(s)} vervallen als repetitie.`
-      : pw? `Voorbereiding start <b>${fmt(s-pw*7)}</b> — dat zijn <b>${repsBetween(s-pw*7,s)}</b> repetities (eerste keer).` : `Geen voorbereidingstijd ingesteld.`; };
+      : pw? `Voorbereiding start <b>${fmt(s-pw*7)}</b>`+(f.cat.value==="nietmuz"?".":` — dat zijn <b>${repsBetween(s-pw*7,s)}</b> repetities (eerste keer).`) : `Geen voorbereidingstijd ingesteld.`; };
   f.addEventListener("input",upd); upd(); f.name.focus();
   $("#cancel").onclick=close;
   if($("#del")) $("#del").onclick=function(){
@@ -673,7 +752,7 @@ async function drawExport(R, ratio, Wd){
         const t=v.n.replace(/vakantie/i,""); c.font=F(700,10.5,1); c.fillStyle="#7a5b00"; if(c.measureText(t).width<w-6) c.fillText(t,a+4,y+RH/2+4);
         const yy=new Date(v.s*DAY).getUTCFullYear(); if(v.summer&&state.settings.summerCheck[yy]!=null&&w>60){ c.fillText("?", a+w-10, y+RH/2+4); } }); }
     if(r.t==="busy"){ lab("Drukte","#f0a37f");
-      const win=[]; vis.filter(e=>e.cat!=="reces").forEach(e=>occurrences(e).forEach(o=>win.push({a:o.s-(+e.prepWeeks||0)*7,b:o.e+1})));
+      const win=[]; vis.filter(e=>!nonMusical(e)).forEach(e=>occurrences(e).forEach(o=>win.push({a:o.s-(+e.prepWeeks||0)*7,b:o.e+1})));
       for(let d=R.a-wd(R.a)+1; d<R.b; d+=7){ const n=win.filter(w=>w.a<d+7&&w.b>d).length; if(!n) continue;
         const a=Math.max(Xc(d),M+LW), b=Math.min(Xc(d+7),W-M); c.fillStyle=["","#cfe3f2","#8fbde0","#f0a37f","#d2552b"][Math.min(4,n)]; c.fillRect(a,y+7,Math.max(1,b-a),RH-14); } }
     if(r.t==="ev"){ const e=r.e, cat=CATS[e.cat]||CATS.evenement;
@@ -716,8 +795,8 @@ function listItems(R){
   const out=[]; state.events.filter(e=>!ui.hidden[e.cat]).forEach(e=>occurrences(e).forEach(o=>{ if(o.e<R.a||o.s>=R.b) return;
     const pw=+e.prepWeeks||0, cat=CATS[e.cat]||CATS.evenement, m=new Date(o.s*DAY);
     out.push({d:o.s, date:o.tbd?`${MONTHS[m.getUTCMonth()]} ${m.getUTCFullYear()} (nog plannen)`:fmt(o.s)+(o.e>o.s?" t/m "+fmtS(o.e):""), name:e.name, cat:cat.nl,
-      prep: e.cat==="reces"?"–": pw? fmtS(o.s-pw*7)+` (${pw} wk)`:"–", reps: e.cat==="reces"||!pw?"":String(repsBetween(o.s-pw*7,o.s)), note:e.note||"",
-      org: noTeam(e)?"": (()=>{ const g=orgOf(e,o.y), st=ORG[g.org]; return [st?st.nl:"Niet ingevuld", g.contact?"Aanspreekpunt: "+g.contact:"", g.team?"Team: "+g.team:""].filter(Boolean).join("\n"); })() }); }));
+      prep: e.cat==="reces"?"–": pw? fmtS(o.s-pw*7)+` (${pw} wk)`:"–", reps: nonMusical(e)||!pw?"":String(repsBetween(o.s-pw*7,o.s)), note:e.note||"",
+      org: noTeam(e)?"": (()=>{ const g=orgOf(e,o.y), st=ORG[g.org], uc=URGMAP[urgKey(e.id,o.y)]; return [(uc&&uc!=="yellow"?URG[uc].nl.toUpperCase()+": ":"")+(st?st.nl:"Niet ingevuld"), g.contact?"Aanspreekpunt: "+g.contact:"", g.team?"Team: "+g.team:""].filter(Boolean).join("\n"); })() }); }));
   VACS.filter(v=>v.summer&&v.e>=R.a&&v.s<R.b).forEach(v=>{ const y=new Date(v.s*DAY).getUTCFullYear(), on=vacMondays(v).filter(d=>state.settings.summerOn[ds(d)]).length, chk=state.settings.summerCheck[y];
     out.push({d:v.s, date:`${fmtS(v.s)} t/m ${fmtS(v.e)}`, name:"Zomerstop (zomervakantie zuid)", cat:"Zomerstop", prep:"–", reps:"", note:(on?`${on} extra repetitie(s) in de vakantie. `:"")+(chk!=null?"Nog inventariseren"+(chk?": "+chk:""):"")}); });
   out.sort((a,b)=>a.d-b.d);
@@ -903,6 +982,7 @@ document.addEventListener("click",e=>{
   const l=e.target.closest("#legend [data-cat]"); if(l){ ui.hidden[l.dataset.cat]=!ui.hidden[l.dataset.cat]; saveUi(); render(); return; }
   const ed=e.target.closest("[data-edit],[data-id]"); if(ed){ tip.style.display="none"; editEvent(ed.dataset.edit||ed.dataset.id); return; }
   if(e.target.id==="add") return editEvent(null);
+  if(e.target.id==="toAct"){ $("#actCard").scrollIntoView({behavior:"smooth",block:"start"}); return; }
   if(e.target.id==="login"){ if(PW){ PW=null; try{localStorage.removeItem("bbn-pw");}catch(_){} setStatus(); toast("Uitgelogd"); } else loginDialog(); return; }
   if(e.target.id==="settings") return editSettings();
   if(e.target.id==="data") return editData();

@@ -126,7 +126,7 @@ function schrijf_(state) {
 function overzicht_(state) {
   const sh = sheet_(OVERZICHT_SHEET);
   const ORG = { none: 'Nog geen team', forming: 'Team in vorming', ok: 'Team staat' };
-  const SOORT = { concert: 'Concert', concours: 'Concours / NK', project: 'Project', evenement: 'Optreden / evenement', vereniging: 'Vereniging', reces: 'Geen repetitie (reces)' };
+  const SOORT = { concert: 'Concert', concours: 'Concours / NK', project: 'Project', evenement: 'Optreden / evenement', vereniging: 'Vereniging', nietmuz: 'Niet-muzikale activiteit', reces: 'Geen repetitie (reces)' };
   const HER = { '0': 'Eenmalig', '1': 'Elk jaar', '2': 'Om de 2 jaar', '3': 'Om de 3 jaar', '5': 'Om de 5 jaar' };
   const rows = [['Evenement', 'Soort', 'Datum (eerste keer)', 'Datum nog plannen', 'Herhaling', 'Voorbereiding (weken)', 'Organisatie', 'Aanspreekpunt', 'Teamleden', 'Notitie']];
   (state.events || []).slice().sort((a, b) => a.date < b.date ? -1 : 1).forEach(e => {
@@ -137,7 +137,7 @@ function overzicht_(state) {
       contact = ys.filter(y => e.yr[y].contact).map(y => y + ': ' + e.yr[y].contact).join('\n');
       team = ys.filter(y => e.yr[y].team).map(y => y + ': ' + e.yr[y].team).join('\n');
     }
-    rows.push([e.name, SOORT[e.cat] || e.cat, e.date, e.tbd ? 'ja' : '', HER[String(e.recur || 0)] || '', Number(e.prepWeeks) || 0, org, contact, team, e.note || '']);
+    rows.push([e.name, SOORT[e.cat] || e.cat, e.unplanned ? 'nog in te plannen' + (e.wishYear ? ' (' + e.wishYear + ')' : '') : e.date, e.tbd ? 'ja' : '', HER[String(e.recur || 0)] || '', Number(e.prepWeeks) || 0, org, contact, team, e.note || '']);
   });
   sh.clearContents();
   sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
