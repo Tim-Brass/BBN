@@ -752,13 +752,13 @@ async function drawExport(R, ratio, Wd){
                .sort((a,b)=>order.indexOf(a.cat)-order.indexOf(b.cat)||dn(a.date)-dn(b.date));
   const rows=[{t:"reps"},{t:"vac"},{t:"busy"}]; let lc=null;
   evs.forEach(e=>{ if(e.cat!==lc){ lc=e.cat; rows.push({t:"sec",cat:e.cat}); } rows.push({t:"ev",e}); });
-  if(ratio){ const nEv=rows.filter(r=>r.t!=="sec").length, nSec=rows.length-nEv, want=W/ratio-96-44-(W<1700?100:78)-nSec*SH; RH=Math.max(28,Math.min(46,Math.floor(want/nEv))); }
-  const HEAD=96, AX=44, gridTop=HEAD+AX, gridH=rows.reduce((s,r)=>s+(r.t==="sec"?SH:RH),0), H=gridTop+gridH+(W<1700?100:78);
+  if(ratio){ const nEv=rows.filter(r=>r.t!=="sec").length, nSec=rows.length-nEv, want=W/ratio-106-44-(W<1700?100:78)-nSec*SH; RH=Math.max(28,Math.min(46,Math.floor(want/nEv))); }
+  const HEAD=106, AX=44, gridTop=HEAD+AX, gridH=rows.reduce((s,r)=>s+(r.t==="sec"?SH:RH),0), H=gridTop+gridH+(W<1700?100:78);
   const cv=document.createElement("canvas"); cv.width=W*S; cv.height=H*S; const c=cv.getContext("2d"); c.scale(S,S);
   const F=(w,sz,cond)=>`${w} ${sz}px ${cond?'"Roboto Condensed",':''}Roboto,Arial,sans-serif`;
   c.fillStyle="#fff"; c.fillRect(0,0,W,H);
   // header
-  let tx=M; if(logo){ const lh=58, lw=logo.width*lh/logo.height; c.drawImage(logo,M,M-6,lw,lh); tx=M+lw+18; }
+  let tx=M; if(logo){ const lh=50, lw=logo.width*lh/logo.height; c.drawImage(logo,M,M-16,lw,lh); tx=M+lw+18; }
   c.fillStyle="#1A1A1A"; c.font=F(800,30,1); c.textBaseline="alphabetic"; c.fillText("Meerjarenplanning "+R.label, tx, M+22);
   c.fillStyle="#6B6B6B"; c.font=F(400,13); c.fillText("Repetities op maandag 20.00–22.00 · concerten, projecten en terugkerende evenementen met voorbereidingstijd", tx, M+44);
   c.textAlign="right"; c.fillText("Stand: "+fmtS(TODAY), W-M, M+22); c.textAlign="left";
