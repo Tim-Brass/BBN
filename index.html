@@ -303,7 +303,11 @@ const noTeam = e => e.cat==="reces" || e.cat==="repetitie";
 function orgOf(e,y){ if(+e.recur>0){ const o=(e.yr&&e.yr[y])||{}; return {org:o.org||"", contact:o.contact||"", team:o.team||""}; }
   return { org:e.org||"", contact:e.contact||"", team:e.team||"" }; }
 function nextOccY(e){ const os=occurrences(e); const n=os.find(o=>o.e>=TODAY)||os[os.length-1]; return n?n.y:null; }
-const initials = n => (n||"").trim().split(/\s+/).filter(Boolean).map(w=>w[0]).slice(0,2).join("").toUpperCase();
+const TUSSEN = new Set(["van","de","der","den","het","ten","ter","te","in","op","aan","bij","onder","uit","voor","over","'t","d'","la","le","du","da","di","von","zu","vander","vanden","vande"]);
+const initials = n => { const w=(n||"").trim().split(/\s+/).filter(Boolean); if(!w.length) return "";
+  const first=w[0], rest=w.slice(1).filter(x=>!TUSSEN.has(x.toLowerCase().replace(/[.,]/g,"")));
+  const last = rest.length ? rest[rest.length-1] : null;
+  return (first[0] + (last ? last[0] : "")).toUpperCase(); };
 function whoBadge(e,y){ if(noTeam(e)) return ""; const o=orgOf(e,y), st=ORG[o.org];
   const t=`${st?st.nl:"Organisatie nog niet ingevuld"}${o.contact?" · aanspreekpunt: "+o.contact:""}${y?" ("+y+")":""}`;
   return `<span class="who ${o.org||"unk"}" title="${esc(t)}">${o.contact?esc(initials(o.contact)):"?"}</span>`; }
