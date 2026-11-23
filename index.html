@@ -413,7 +413,6 @@ document.body.insertAdjacentHTML("beforeend",`
   <button class="btn tl-only" id="goToday">Naar vandaag</button>
   <button class="btn" id="settings">Feestdagen</button>
   <button class="btn" id="vacs">Vakanties</button>
-  <button class="btn" id="data">Gegevens</button>
   <button class="btn" id="export">Exporteren</button>
   <div class="legend" id="legend"></div>
 </div>
@@ -818,16 +817,6 @@ function editSettings(){
   $("#f").onsubmit=ev=>{ ev.preventDefault(); HOLS.forEach(([k])=>state.settings.hol[k]=$("#f")[k].checked); close(); commit(); };
 }
 
-function editData(){
-  const json=JSON.stringify({events:state.events,settings:state.settings},null,1);
-  dlg.innerHTML=`<h3>Gegevens: back-up en import</h3><div class="body">
-    <div class="hint">Kopieer de gegevens als back-up, of plak eerder gekopieerde gegevens en klik op <b>Importeren</b> (vervangt de huidige planning).</div>
-    <label class="full"><textarea id="js" rows="10" style="font:12px ui-monospace,monospace">${esc(json)}</textarea></label></div>
-    <div class="foot"><button class="btn" id="cp">Kopiëren</button><span class="sp"></span><button class="btn" id="cancel">Sluiten</button><button class="btn primary" id="imp">Importeren</button></div>`;
-  ov.classList.add("show"); $("#cancel").onclick=close;
-  $("#cp").onclick=async()=>{ try{ await navigator.clipboard.writeText($("#js").value); toast("Gekopieerd"); }catch(e){ $("#js").select(); toast("Selecteer en kopieer met Ctrl+C"); } };
-  $("#imp").onclick=()=>{ try{ const d=JSON.parse($("#js").value); if(!Array.isArray(d.events)) throw 0; state.events=d.events; if(d.settings) state.settings=Object.assign(state.settings,d.settings); close(); commit(); }catch(e){ toast("Dat zijn geen geldige gegevens"); } };
-}
 
 // ---------- export (PNG / PDF) ----------
 function rangeOf(kind, year){
@@ -1066,7 +1055,7 @@ async function sync(force){
     if(d.error) throw new Error(d.error);
     lastSync=Date.now();
     if(force || (d.version!==VERSION && !busy())){ VERSION=d.version||0; if(d.state) state=normalize(d.state); render(); }
-    if(!d.state && force && !VERSION) toast("Nog geen gegevens in de Google Sheet. Log in en gebruik Gegevens → Importeren.");
+    if(!d.state && force && !VERSION) toast("Nog geen gegevens in de Google Sheet. Log in en voeg het eerste evenement toe.");
   }catch(e){ const s=$("#status"); s.className="status warn"; s.textContent="Geen verbinding met de Google Sheet"; return; }
   setStatus();
 }
@@ -1162,7 +1151,6 @@ document.addEventListener("click",e=>{
   if(e.target.id==="toAct"){ $("#actCard").scrollIntoView({behavior:"smooth",block:"start"}); return; }
   if(e.target.id==="login"){ if(PW){ PW=null; try{localStorage.removeItem("bbn-pw");}catch(_){} setStatus(); toast("Uitgelogd"); } else loginDialog(); return; }
   if(e.target.id==="settings") return editSettings();
-  if(e.target.id==="data") return editData();
   if(e.target.id==="export") return exportDialog();
   if(e.target.id==="goToday"){ const sc=$("#scroller"); sc.scrollTo({left:Math.max(0,(TODAY-START)*ui.px-120),behavior:"smooth"}); }
 });

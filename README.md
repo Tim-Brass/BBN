@@ -26,9 +26,8 @@ Een webpagina met de meerjarenplanning van Brass Band Nuenen: repetities, concer
 2. Ga naar **Settings → Pages**, kies bij *Source* **Deploy from a branch**, branch **main**, map **/ (root)**, en klik op **Save**.
 3. Na een minuut staat de planning op `https://<gebruikersnaam>.github.io/<repository>/`.
 
-### 3. Gegevens overzetten
-1. Open de website, klik op **Inloggen om te bewerken** en vul het bewerkwachtwoord in.
-2. Klik op **Gegevens**, plak de geëxporteerde gegevens en klik op **Importeren**.
+### 3. Back-ups
+De planning staat in de Google Sheet. Een eerdere stand terugzetten kan via **Bestand → Versiegeschiedenis** in de sheet.
 
 ## Later iets aanpassen aan het script?
 Na elke wijziging in Apps Script: **Implementeren → Implementaties beheren → bewerken (potlood) → Versie: Nieuwe versie → Implementeren**. De URL blijft dan hetzelfde.
