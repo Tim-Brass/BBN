@@ -66,6 +66,7 @@ header.top .spacer{flex:1}
 .tick.x{background:var(--red);opacity:1;height:8px;top:14px;width:6px;border-radius:50%;margin-left:-2px}
 .tick.r{background:#c9c6bd;opacity:1}
 .tick.z{background:#e7c873;opacity:1}
+.tick.c{background:#fff;border:2px solid #C8372D;width:7px;height:7px;top:14px;margin-left:-2px;transform:rotate(45deg);opacity:1;border-radius:1px}
 .tick.e{background:#fff;border:2px solid var(--blue);width:6px;margin-left:-2px;opacity:1}
 .vac{position:absolute;top:7px;height:22px;border-radius:4px;background:#F6E3A8;border:1px solid #E2C46A;color:#7a5b00;font:700 10.5px/20px "Roboto Condensed",sans-serif;padding:0 5px;white-space:nowrap;overflow:hidden;cursor:default}
 .vac.summer{background:#F2CF63;border-color:#D9AE2E;cursor:pointer}
@@ -197,7 +198,8 @@ if(!state || !state.events) state = {v:1, settings:{}, events:[]};
 state.settings = state.settings || {};
 state.settings.hol = Object.assign(Object.fromEntries(HOLS.map(h=>[h[0],true])), state.settings.hol||{});
 if(!Array.isArray(state.settings.vac)) state.settings.vac = VAC_DEFAULT;
-state.settings.summerOn = state.settings.summerOn || {};   // {"2027-07-26":true} = repetitie ondanks zomervakantie
+state.settings.summerOn = state.settings.summerOn || {};
+state.settings.repOv = state.settings.repOv || {};   // {"2027-03-08":{s:"cancel"|"on"|"extra", note, time}}   // {"2027-07-26":true} = repetitie ondanks zomervakantie
 state.settings.summerCheck = state.settings.summerCheck || {}; // {"2027":"notitie"} = nog inventariseren
 let ui = {px:1.3, hidden:{}, vacShade:true};
 let MIGRATE_ORG = true;
@@ -312,7 +314,13 @@ function computeReps(){
     if(st==="ok" && v && v.summer){ if(state.settings.summerOn[ds(d)]){ st="ok"; why="Extra repetitie in de zomervakantie"; list.push({d,st,why,extra:1,vac:v}); continue; } st="z"; why="Zomerstop"; }
     list.push({d,st,why,vac:v});
   }
-  return list;
+  const O=state.settings.repOv||{};
+  list.forEach(r=>{ const o=O[ds(r.d)]; if(!o) return;
+    if(o.s==="cancel"){ r.st="c"; r.why="Geannuleerd"+(o.note?": "+o.note:""); r.ov=1; delete r.extra; }
+    else if(o.s==="on" && r.st!=="ok"){ r.prev=r.why; r.st="ok"; r.extra=1; r.why="Extra repetitie"+(o.note?": "+o.note:""); r.ov=1; r.time=o.time; } });
+  Object.entries(O).forEach(([k,o])=>{ if(o.s!=="extra") return; const d=dn(k); if(d<START||d>=END||list.some(r=>r.d===d)) return;
+    list.push({d, st:"ok", extra:1, ov:1, time:o.time, why:"Extra repetitie"+(o.note?": "+o.note:"")}); });
+  return list.sort((a,b)=>a.d-b.d);
 }
 let REPS=[];
 const repsBetween=(a,b)=>REPS.filter(r=>r.st==="ok"&&r.d>=a&&r.d<b).length;
@@ -374,8 +382,8 @@ function render(){
   const bg = `${vsh}${vl}${TODAY>=START&&TODAY<END?`<div class="today" style="left:${X(TODAY)}px"></div>`:""}`;
   // rehearsals row
   let ticks="";
-  REPS.forEach(r=>{ ticks+=`<div class="tick ${r.extra?"e":r.st==="ok"?"":r.st}" style="left:${X(r.d)+Math.max(0,px*.5-1)}px" data-tip="rep|${r.d}|${r.st}|${esc(r.why)}"></div>`; });
-  h+=`<div class="row"><div class="lab"><span class="dot" style="background:var(--blue)"></span><span class="nm" style="cursor:default">Repetities (ma 20–22)</span></div><div class="track" style="width:${W}px">${bg}${ticks}</div></div>`;
+  REPS.forEach(r=>{ ticks+=`<div class="tick ${r.extra?"e":r.st==="ok"?"":r.st}" style="left:${X(r.d)+Math.max(0,px*.5-1)}px" data-tip="rep|${r.d}|${r.st}|${esc(r.why)}|${esc(r.time||"")}"></div>`; });
+  h+=`<div class="row"><div class="lab"><span class="dot" style="background:var(--blue)"></span><span class="nm" style="cursor:default">Repetities (ma 20–22)</span><button class="btn" id="addRep" title="Extra repetitie toevoegen" style="padding:1px 7px;font-size:12px">+ extra</button></div><div class="track reptrack" style="width:${W}px;cursor:pointer" title="Klik op een repetitie om te annuleren of toch te laten doorgaan">${bg}${ticks}</div></div>`;
   // vacation row
   let vb="";
   VACS.forEach(v=>{ if(v.e<START||v.s>=END) return; const w=X(v.e+1)-X(v.s), y=new Date(v.s*DAY).getUTCFullYear(), chk=v.summer&&state.settings.summerCheck[y]!=null;
@@ -427,7 +435,7 @@ function render(){
   document.querySelectorAll("#zoom .btn").forEach(b=>b.classList.toggle("on",+b.dataset.px===ui.px));
   // legend
   $("#legend").innerHTML = Object.entries(CATS).map(([k,c])=>`<span data-cat="${k}" class="${ui.hidden[k]?"off":""}" title="Klik om te tonen/verbergen"><i style="background:${k==="reces"?"repeating-linear-gradient(135deg,#ccc 0 3px,#eee 3px 6px)":c.c}"></i>${c.nl}</span>`).join("")
-    + `<span data-vs="1" class="${ui.vacShade?"":"off"}" title="Klik om vakantie-arcering te tonen/verbergen"><i class="vc"></i>Schoolvakantie (zuid)</span><span style="cursor:default"><i class="lp"></i>Voorbereiding</span><span style="cursor:default"><i style="background:#e7c873"></i>Zomerstop</span><span style="cursor:default"><i style="background:#fff;border:2px solid var(--blue);border-radius:50%"></i>Extra in vakantie</span><span style="cursor:default"><i style="background:var(--red);border-radius:50%"></i>Vervalt (feestdag)</span><span style="cursor:default" title="Rondje met initialen van het aanspreekpunt"><i style="border:2px solid #2E9E6B;border-radius:50%;background:#E7F5EE"></i>Team staat</span><span style="cursor:default"><i style="border:2px solid #D9AE2E;border-radius:50%;background:#FBF3DA"></i>In vorming</span><span style="cursor:default"><i style="border:2px solid #C8372D;border-radius:50%;background:#FBE9E7"></i>Geen team</span>`;
+    + `<span data-vs="1" class="${ui.vacShade?"":"off"}" title="Klik om vakantie-arcering te tonen/verbergen"><i class="vc"></i>Schoolvakantie (zuid)</span><span style="cursor:default"><i class="lp"></i>Voorbereiding</span><span style="cursor:default"><i style="background:#e7c873"></i>Zomerstop</span><span style="cursor:default"><i style="background:#fff;border:2px solid var(--blue);border-radius:50%"></i>Extra repetitie</span><span style="cursor:default"><i style="background:#fff;border:2px solid #C8372D;transform:rotate(45deg) scale(.75)"></i>Geannuleerd</span><span style="cursor:default"><i style="background:var(--red);border-radius:50%"></i>Vervalt (feestdag)</span><span style="cursor:default" title="Rondje met initialen van het aanspreekpunt"><i style="border:2px solid #2E9E6B;border-radius:50%;background:#E7F5EE"></i>Team staat</span><span style="cursor:default"><i style="border:2px solid #D9AE2E;border-radius:50%;background:#FBF3DA"></i>In vorming</span><span style="cursor:default"><i style="border:2px solid #C8372D;border-radius:50%;background:#FBE9E7"></i>Geen team</span>`;
   renderPanels();
 }
 
@@ -468,6 +476,7 @@ function renderPanels(){
       else if(o.s>=TODAY&&o.s<until) items.push({d:o.s,e,kind:e.cat==="reces"?"Reces begint":"Evenement",y:o.y});
       if(pw&&e.cat!=="reces"){ const a=o.s-pw*7; if(a>=TODAY&&a<until) items.push({d:a,e,kind:`Start voorbereiding (${pw} wk)${o.tbd?" — indicatief, datum nog niet bekend":""}`,o:o.s,y:o.y}); }
     }); });
+  REPS.filter(r=>r.ov&&r.d>=TODAY&&r.d<until).forEach(r=>items.push({d:r.d, e:{id:null,name:r.st==="c"?"Repetitie geannuleerd":"Extra repetitie",cat:"rep"}, kind:r.st==="c"?(r.why.replace(/^Geannuleerd:?\s*/,"")||"Geen reden opgegeven"):`${r.time||"20.00–22.00"}${r.why.includes(": ")?" · "+r.why.split(": ").slice(1).join(": "):""}`, rep:r}));
   VACS.filter(v=>v.summer).forEach(v=>{
     const before=REPS.filter(r=>r.st==="ok"&&r.d<v.s).pop(), inV=REPS.filter(r=>r.d>=v.s&&r.d<=v.e), lastIn=inV.filter(r=>r.st==="ok").pop(),
           after=REPS.find(r=>r.st==="ok"&&r.d>v.e), y=new Date(v.s*DAY).getUTCFullYear(), chk=state.settings.summerCheck[y]!=null;
@@ -484,7 +493,8 @@ function renderPanels(){
     if(uc && uc!=="yellow") return `<div class="orgline" style="color:${URG[uc].c};font-weight:700">⚠ ${st?st.nl:"Organisatie niet ingevuld"} — team regelen${o.contact?` <span style="font-weight:400;color:var(--muted)">· aanspreekpunt ${esc(o.contact)}</span>`:""}</div>`;
     return `<div class="orgline">${whoBadge(it.e,it.y).replace('class="who','style="width:16px;height:16px;font-size:8px;border-width:1.5px;vertical-align:-3px;margin-right:4px" class="who')}<span class="st" style="color:${st?st.c:"#999"}">${st?st.nl:"Organisatie niet ingevuld"}</span>${o.contact?` · aanspreekpunt ${esc(o.contact)}`:""}</div>`; };
   const nNoTeam = new Set(items.filter(it=>it.e.id&&!noTeam(it.e)&&orgOf(it.e,it.y).org!=="ok").map(it=>it.e.id+"|"+it.y)).size;
-  $("#upcoming").innerHTML = items.length? items.map(it=>{ if(it.e.cat==="zomer") return `<li><span class="d">${fmtS(it.d)}</span><span><span class="pill" style="background:#D9AE2E">Zomer</span><b data-summer="${it.vacStart}" style="cursor:pointer">${esc(it.e.name)}</b><div class="kind">${it.kind}</div></span><span class="reps">nog ${repsBetween(TODAY,it.d)} repetities</span></li>`;
+  $("#upcoming").innerHTML = items.length? items.map(it=>{ if(it.e.cat==="rep") return `<li><span class="d">${fmtS(it.d)}</span><span><span class="pill" style="background:${it.rep.st==="c"?"#C8372D":"#0076BE"}">Repetitie</span><b data-rep="${it.d}" style="cursor:pointer">${it.e.name}</b><div class="kind">${esc(it.kind)}</div></span><span class="reps">${fmt(it.d).split(" ")[0]}</span></li>`;
+    if(it.e.cat==="zomer") return `<li><span class="d">${fmtS(it.d)}</span><span><span class="pill" style="background:#D9AE2E">Zomer</span><b data-summer="${it.vacStart}" style="cursor:pointer">${esc(it.e.name)}</b><div class="kind">${it.kind}</div></span><span class="reps">nog ${repsBetween(TODAY,it.d)} repetities</span></li>`;
     const c=CATS[it.e.cat]||CATS.evenement;
     if(it.todo) return `<li class="todo"><span class="d">${MONTHS[new Date(it.d*DAY).getUTCMonth()]} ${new Date(it.d*DAY).getUTCFullYear()}</span><span><span class="pill" style="background:${c.c}">${c.s}</span><b data-edit="${it.e.id}" style="cursor:pointer">${esc(it.e.name)}</b><div class="kind">${it.kind}</div>${orgLine(it)}</span><span class="reps" style="color:#a77b00;font-weight:700">datum plannen</span></li>`;
     const wk=n=>{ const w=Math.round(n/7); return w<=1?`${n} dagen`:`${w} weken`; };
@@ -495,7 +505,7 @@ function renderPanels(){
   const tc=$("#teamChip"); tc.style.display=nNoTeam?"inline-block":"none"; tc.textContent = nNoTeam===1?"1 zonder vast team":`${nNoTeam} zonder vast team`;
   let t=`<tr><th>Jaar</th><th class="n">Maandagen</th><th class="n">Vervallen</th><th class="n">Zomerstop / reces</th><th class="n">Repetities</th></tr>`;
   for(let y=Y0;y<=Y1;y++){ const a=ymd(y,0,1),b=ymd(y+1,0,1), r=REPS.filter(x=>x.d>=a&&x.d<b);
-    t+=`<tr><td><b>${y}</b></td><td class="n">${r.length}</td><td class="n">${r.filter(x=>x.st==="x").length}</td><td class="n">${r.filter(x=>x.st==="r"||x.st==="z").length}${hasSummer(y)?"":" <span title='Zomervakantie nog niet vastgesteld' style='color:#a77b00'>?</span>"}</td><td class="n"><b>${r.filter(x=>x.st==="ok").length}</b>${hasSummer(y)?"":"*"}</td></tr>`; }
+    t+=`<tr><td><b>${y}</b></td><td class="n">${r.filter(x=>wd(x.d)===1).length}</td><td class="n">${r.filter(x=>x.st==="x"||x.st==="c").length}</td><td class="n">${r.filter(x=>x.st==="r"||x.st==="z").length}${hasSummer(y)?"":" <span title='Zomervakantie nog niet vastgesteld' style='color:#a77b00'>?</span>"}</td><td class="n"><b>${r.filter(x=>x.st==="ok").length}</b>${hasSummer(y)?"":"*"}</td></tr>`; }
   if([...Array(Y1-Y0+1)].some((_,i)=>!hasSummer(Y0+i))) t+=`<tr><td colspan="5" class="small" style="border:0;padding-top:8px">* Zomervakantie nog niet vastgesteld — aantal valt lager uit zodra de vakantie is toegevoegd.</td></tr>`;
   $("#yrs").innerHTML=t;
   $("#updated").textContent = state.updated ? `Laatst bijgewerkt: ${fmtS(dn(state.updated))}` : "";
@@ -507,7 +517,7 @@ document.addEventListener("mousemove",ev=>{
   if(drag) return;
   const t=ev.target.closest("[data-tip]"); if(!t){ tip.style.display="none"; return; }
   const p=t.dataset.tip.split("|"); let html="";
-  if(p[0]==="rep"){ const d=+p[1]; html = p[2]==="ok"?`<b>${p[3]?esc(p[3]):"Repetitie"}</b><br>${fmt(d)}, 20.00–22.00`: `<b>Geen repetitie</b><br>${fmt(d)}<br>${p[3]}`; }
+  if(p[0]==="rep"){ const d=+p[1]; html = p[2]==="ok"?`<b>${p[3]?p[3]:"Repetitie"}</b><br>${fmt(d)}, ${p[4]||"20.00–22.00"}`: `<b>Geen repetitie</b><br>${fmt(d)}<br>${p[3]}`; html+=`<br><i>Klik om aan te passen</i>`; }
   else if(p[0]==="vac"){ const a=+p[1], b=+p[2], v=VACS.find(x=>x.s===a);
     html=`<b>${p[3]} (regio zuid)</b><br>${fmtS(a)} t/m ${fmtS(b)}`;
     if(v&&v.summer){ const ms=vacMondays(v), on=ms.filter(d=>state.settings.summerOn[ds(d)]).length, y=new Date(a*DAY).getUTCFullYear(), chk=state.settings.summerCheck[y];
@@ -626,6 +636,35 @@ function editEvent(id){
     close(); commit(); };
 }
 
+function editRep(d0){
+  const O=state.settings.repOv;
+  const draw=d=>{
+    const key=ds(d), o=O[key]||{}, isMon=wd(d)===1, r=REPS.find(x=>x.d===d);
+    // standard status without override
+    let std="Repetitie (standaard)";
+    if(isMon && r){ if(r.st==="c"||r.ov){ const tmp=state.settings.repOv[key]; delete state.settings.repOv[key]; const rr=computeReps().find(x=>x.d===d); std=rr? (rr.st==="ok"?"Repetitie (standaard)":"Geen repetitie: "+rr.why) : "—"; if(tmp) state.settings.repOv[key]=tmp; }
+      else std = r.st==="ok"?"Repetitie (standaard)":"Geen repetitie: "+r.why; }
+    const stdOn = std.startsWith("Repetitie");
+    const choice = o.s||"std";
+    dlg.innerHTML=`<h3>Repetitie aanpassen</h3><form id="rf2"><div class="body">
+      <label>Datum<input type="date" name="d" value="${key}"></label>
+      <label>Tijd (bij extra repetitie)<input name="time" value="${esc(o.time||"20.00–22.00")}" placeholder="20.00–22.00"></label>
+      <div class="hint">${fmt(d)} — ${isMon? "standaard: <b>"+esc(std)+"</b>" : "geen vaste repetitiedag"}</div>
+      ${isMon?`<label class="chk full"><input type="radio" name="s" value="std" ${choice==="std"?"checked":""}> Standaard aanhouden</label>`:""}
+      ${isMon&&stdOn?`<label class="chk full"><input type="radio" name="s" value="cancel" ${choice==="cancel"?"checked":""}> Repetitie <b>annuleren</b></label>`:""}
+      ${isMon&&!stdOn?`<label class="chk full"><input type="radio" name="s" value="on" ${choice==="on"?"checked":""}> <b>Toch repeteren</b></label>`:""}
+      ${!isMon?`<label class="chk full"><input type="radio" name="s" value="std" ${choice!=="extra"?"checked":""}> Geen repetitie</label><label class="chk full"><input type="radio" name="s" value="extra" ${choice==="extra"?"checked":""}> <b>Extra repetitie</b> op deze dag</label>`:""}
+      <label class="full">Reden / notitie<input name="note" value="${esc(o.note||"")}" placeholder="bijv. zaal niet beschikbaar, extra repetitie voor concours…"></label>
+    </div><div class="foot"><span class="sp"></span><button type="button" class="btn" id="cancel">Annuleren</button><button class="btn primary">Opslaan</button></div></form>`;
+    ov.classList.add("show"); $("#cancel").onclick=close;
+    const f=$("#rf2");
+    f.d.onchange=()=>{ if(f.d.value) draw(dn(f.d.value)); };
+    f.onsubmit=ev=>{ ev.preventDefault(); const sel=(f.querySelector('input[name=s]:checked')||{}).value||"std";
+      if(sel==="std") delete O[key]; else { O[key]={s:sel}; if(f.note.value.trim()) O[key].note=f.note.value.trim(); if(sel!=="cancel" && f.time.value.trim() && f.time.value.trim()!=="20.00–22.00") O[key].time=f.time.value.trim(); }
+      close(); commit(); };
+  };
+  draw(d0);
+}
 function editSummer(start){
   const v=VACS.find(x=>x.s===start); if(!v) return; const y=new Date(v.s*DAY).getUTCFullYear(), ms=vacMondays(v), chk=state.settings.summerCheck[y];
   let prevLast=v.s-1; while(wd(prevLast)!==1) prevLast--; let nextFirst=v.e+1; while(wd(nextFirst)!==1) nextFirst++;
@@ -744,6 +783,7 @@ async function drawExport(R, ratio, Wd){
     if(r.t==="reps"){ lab("Repetities (ma 20–22)","#0076BE");
       REPS.forEach(p=>{ if(p.d<R.a||p.d>=R.b) return; const x=Xc(p.d)+Math.max(0,px*.5-1), w=Math.max(1,Math.min(3,px*1.6));
         if(p.st==="x"){ c.fillStyle="#C8372D"; c.beginPath(); c.arc(x+w/2,y+RH/2,Math.max(2,Math.min(3.5,px*2)),0,7); c.fill(); }
+        else if(p.st==="c"){ c.save(); c.translate(x+w/2,y+RH/2); c.rotate(Math.PI/4); c.strokeStyle="#C8372D"; c.lineWidth=1.6; c.strokeRect(-3,-3,6,6); c.restore(); }
         else if(p.extra){ c.strokeStyle="#0076BE"; c.lineWidth=1.5; c.beginPath(); c.arc(x+w/2,y+RH/2,3.5,0,7); c.stroke(); }
         else { c.fillStyle=p.st==="ok"?"#0076BE":p.st==="z"?"#e7c873":"#c9c6bd"; c.fillRect(x,y+6,w,RH-12); } }); }
     if(r.t==="vac"){ lab("Schoolvakanties (zuid)","#E2B53A");
@@ -781,8 +821,9 @@ async function drawExport(R, ratio, Wd){
   if(!evs.length){ c.fillStyle="#6B6B6B"; c.font=F(400,13); c.fillText("Geen evenementen in deze periode.", M+LW+12, gb+18); }
   // legend
   let lx=M, ly=gb+30; c.font=F(400,12);
-  const L=[...Object.entries(CATS).filter(([k])=>!ui.hidden[k]).map(([k,v])=>[k==="reces"?"#c9c6bd":v.c,v.nl,"box"]),["#F6E3A8","Schoolvakantie (zuid)","box"],["#0076BE","Voorbereiding","hatch"],["#0076BE","Datum nog plannen","dash"],["#e7c873","Zomerstop","box"],["#C8372D","Vervalt (feestdag)","dot"],["#2E9E6B","Team staat","ring"],["#D9AE2E","Team in vorming","ring"],["#C8372D","Nog geen team","ring"]];
+  const L=[...Object.entries(CATS).filter(([k])=>!ui.hidden[k]).map(([k,v])=>[k==="reces"?"#c9c6bd":v.c,v.nl,"box"]),["#F6E3A8","Schoolvakantie (zuid)","box"],["#0076BE","Voorbereiding","hatch"],["#0076BE","Datum nog plannen","dash"],["#e7c873","Zomerstop","box"],["#C8372D","Vervalt (feestdag)","dot"],["#C8372D","Geannuleerd","diamond"],["#2E9E6B","Team staat","ring"],["#D9AE2E","Team in vorming","ring"],["#C8372D","Nog geen team","ring"]];
   L.forEach(([col,t,k])=>{ if(lx+20+c.measureText(t).width>W-M){ lx=M; ly+=22; } if(k==="hatch"){ c.fillStyle=hatch(c,col); c.fillRect(lx,ly-10,14,12); } else if(k==="dash"){ c.setLineDash([3,2]); c.strokeStyle=col; c.strokeRect(lx+.5,ly-9.5,13,11); c.setLineDash([]); }
+    else if(k==="diamond"){ c.save(); c.translate(lx+7,ly-4); c.rotate(Math.PI/4); c.strokeStyle=col; c.lineWidth=1.6; c.strokeRect(-4,-4,8,8); c.restore(); }
     else if(k==="ring"){ c.beginPath(); c.arc(lx+7,ly-4,6,0,7); c.fillStyle=col+"22"; c.fill(); c.strokeStyle=col; c.lineWidth=1.5; c.stroke(); }
     else if(k==="dot"){ c.fillStyle=col; c.beginPath(); c.arc(lx+7,ly-4,4,0,7); c.fill(); } else { c.fillStyle=col; rr(c,lx,ly-10,14,12,3); c.fill(); }
     c.fillStyle="#6B6B6B"; c.fillText(t,lx+20,ly); lx+=c.measureText(t).width+40; });
@@ -797,6 +838,7 @@ function listItems(R){
     out.push({d:o.s, date:o.tbd?`${MONTHS[m.getUTCMonth()]} ${m.getUTCFullYear()} (nog plannen)`:fmt(o.s)+(o.e>o.s?" t/m "+fmtS(o.e):""), name:e.name, cat:cat.nl,
       prep: e.cat==="reces"?"–": pw? fmtS(o.s-pw*7)+` (${pw} wk)`:"–", reps: nonMusical(e)||!pw?"":String(repsBetween(o.s-pw*7,o.s)), note:e.note||"",
       org: noTeam(e)?"": (()=>{ const g=orgOf(e,o.y), st=ORG[g.org], uc=URGMAP[urgKey(e.id,o.y)]; return [(uc&&uc!=="yellow"?URG[uc].nl.toUpperCase()+": ":"")+(st?st.nl:"Niet ingevuld"), g.contact?"Aanspreekpunt: "+g.contact:"", g.team?"Team: "+g.team:""].filter(Boolean).join("\n"); })() }); }));
+  REPS.filter(r=>r.ov&&r.d>=R.a&&r.d<R.b).forEach(r=>out.push({d:r.d, date:fmt(r.d)+(r.st!=="c"&&r.time?" "+r.time:""), name:r.st==="c"?"Repetitie geannuleerd":"Extra repetitie", cat:"Repetitie", prep:"–", reps:"", org:"", note:r.why.includes(": ")?r.why.split(": ").slice(1).join(": "):""}));
   VACS.filter(v=>v.summer&&v.e>=R.a&&v.s<R.b).forEach(v=>{ const y=new Date(v.s*DAY).getUTCFullYear(), on=vacMondays(v).filter(d=>state.settings.summerOn[ds(d)]).length, chk=state.settings.summerCheck[y];
     out.push({d:v.s, date:`${fmtS(v.s)} t/m ${fmtS(v.e)}`, name:"Zomerstop (zomervakantie zuid)", cat:"Zomerstop", prep:"–", reps:"", note:(on?`${on} extra repetitie(s) in de vakantie. `:"")+(chk!=null?"Nog inventariseren"+(chk?": "+chk:""):"")}); });
   out.sort((a,b)=>a.d-b.d);
@@ -875,7 +917,7 @@ function normalize(st){
   st.settings=st.settings||{};
   st.settings.hol=Object.assign(Object.fromEntries(HOLS.map(h=>[h[0],true])), st.settings.hol||{});
   if(!Array.isArray(st.settings.vac)) st.settings.vac=VAC_DEFAULT;
-  st.settings.summerOn=st.settings.summerOn||{}; st.settings.summerCheck=st.settings.summerCheck||{};
+  st.settings.summerOn=st.settings.summerOn||{}; st.settings.summerCheck=st.settings.summerCheck||{}; st.settings.repOv=st.settings.repOv||{};
   return st;
 }
 function setStatus(){
@@ -982,6 +1024,10 @@ document.addEventListener("click",e=>{
   const l=e.target.closest("#legend [data-cat]"); if(l){ ui.hidden[l.dataset.cat]=!ui.hidden[l.dataset.cat]; saveUi(); render(); return; }
   const ed=e.target.closest("[data-edit],[data-id]"); if(ed){ tip.style.display="none"; editEvent(ed.dataset.edit||ed.dataset.id); return; }
   if(e.target.id==="add") return editEvent(null);
+  if(e.target.id==="addRep"){ let d=TODAY+1; return editRep(d); }
+  const rp=e.target.closest("[data-rep]"); if(rp){ return editRep(+rp.dataset.rep); }
+  const rt=e.target.closest(".reptrack"); if(rt){ const day=START+(e.clientX-rt.getBoundingClientRect().left)/ui.px;
+    let best=null; REPS.forEach(r=>{ if(best===null||Math.abs(r.d+.5-day)<Math.abs(best.d+.5-day)) best=r; }); if(best&&Math.abs(best.d+.5-day)<=4){ tip.style.display="none"; return editRep(best.d); } }
   if(e.target.id==="toAct"){ $("#actCard").scrollIntoView({behavior:"smooth",block:"start"}); return; }
   if(e.target.id==="login"){ if(PW){ PW=null; try{localStorage.removeItem("bbn-pw");}catch(_){} setStatus(); toast("Uitgelogd"); } else loginDialog(); return; }
   if(e.target.id==="settings") return editSettings();
