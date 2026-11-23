@@ -223,12 +223,13 @@ function whoBadge(e,y){ if(noTeam(e)) return ""; const o=orgOf(e,y), st=ORG[o.or
   const t=`${st?st.nl:"Organisatie nog niet ingevuld"}${o.contact?" · aanspreekpunt: "+o.contact:""}${y?" ("+y+")":""}`;
   return `<span class="who ${o.org||"unk"}" title="${esc(t)}">${o.contact?esc(initials(o.contact)):"?"}</span>`; }
 function occYears(ev){
-  if(!ev.date) return [];
+  if(ev.unplanned || !ev.date) return [];
   const y0=+ev.date.slice(0,4), step=+ev.recur||0;
   if(!step) return [y0];
   const until=Math.min(+ev.until||Y1, Y1), out=[]; for(let y=y0;y<=until;y+=step) out.push(y); return out;
 }
 function occurrences(ev){
+  if(ev.unplanned || !ev.date) return [];
   const base=dn(ev.date), len = ev.end ? Math.max(0,dn(ev.end)-base) : 0;
   const step = +ev.recur||0, out=[];
   const b=new Date(base*DAY), y0=b.getUTCFullYear();
@@ -292,6 +293,7 @@ document.body.insertAdjacentHTML("beforeend",`
 </div>
 <div class="wrap"><div class="scroller" id="scroller"><div class="grid" id="grid"></div></div></div>
 <div class="panels">
+  <div class="card" id="openCard" style="grid-column:1/-1;display:none"><h2>Nog in te plannen<span class="chip" id="openChip"></span></h2><ul class="up" id="openList"></ul></div>
   <div class="card"><h2>Komende 12 maanden<span class="chip" id="todoChip" style="display:none"></span><span class="chip" id="teamChip" style="display:none;background:#FBE9E7;color:#9b2a22"></span></h2><ul class="up" id="upcoming"></ul></div>
   <div class="card"><h2>Repetities per jaar</h2><table class="yrs" id="yrs"></table>
     <p class="small" id="updated"></p></div>
@@ -336,9 +338,10 @@ function render(){
   h+=`<div class="row"><div class="lab"><span class="dot" style="background:#f0a37f"></span><span class="nm" style="cursor:default" title="Hoeveel projecten tegelijk in voorbereiding of uitvoering zijn">Drukte</span></div><div class="track" style="width:${W}px">${bg}${busy}</div></div>`;
   // events grouped by category
   const order=Object.keys(CATS);
-  const sorted=[...vis].sort((a,b)=>order.indexOf(a.cat)-order.indexOf(b.cat) || dn(a.date)-dn(b.date));
+  const sorted=[...vis].filter(e=>!e.unplanned&&e.date).sort((a,b)=>order.indexOf(a.cat)-order.indexOf(b.cat) || dn(a.date)-dn(b.date));
+  const open=vis.filter(e=>e.unplanned||!e.date).sort((a,b)=>(+a.wishYear||9999)-(+b.wishYear||9999)||a.name.localeCompare(b.name));
   let lastCat=null;
-  if(!sorted.length) h+=`<div class="empty">Nog geen evenementen. Klik op <b>+ Evenement toevoegen</b>.</div>`;
+  if(!sorted.length&&!open.length) h+=`<div class="empty">Nog geen evenementen. Klik op <b>+ Evenement toevoegen</b>.</div>`;
   sorted.forEach(e=>{
     const cat=CATS[e.cat]||CATS.evenement;
     if(e.cat!==lastCat){ lastCat=e.cat; h+=`<div class="row sec"><div class="lab">${cat.nl}</div><div class="track" style="width:${W}px">${bg}</div></div>`; }
@@ -354,6 +357,14 @@ function render(){
     });
     h+=`<div class="row"><div class="lab"><span class="dot" style="background:${cat.c}"></span><span class="nm" data-edit="${e.id}" title="Bewerken">${esc(e.name)}</span>${whoBadge(e,nextOccY(e))}<span class="rec">${occurrences(e).some(o=>o.tbd&&o.e>=TODAY)?'<span title="Er zijn nog datums te plannen" style="color:#a77b00;font-weight:700">? </span>':""}${rec}</span></div><div class="track" style="width:${W}px">${bg}${bars}</div></div>`;
   });
+  if(open.length){
+    h+=`<div class="row sec"><div class="lab" style="color:#a77b00">Nog in te plannen</div><div class="track" style="width:${W}px">${bg}</div></div>`;
+    open.forEach(e=>{ const cat=CATS[e.cat]||CATS.evenement, y=+e.wishYear; let bar="";
+      if(y>=Y0&&y<=Y1){ const a=ymd(y,0,1), b=ymd(y+1,0,1);
+        bar=`<div class="ev tbd" style="left:${X(a)+2}px;width:${X(b)-X(a)-4}px;background:${cat.c}12;color:${cat.c};text-align:left;padding-left:8px" data-id="${e.id}" data-tip="open|${e.id}">ergens in ${y} — ${esc(e.name)}</div>`; }
+      else { const x=Math.max(0,X(TODAY)+8); bar=`<div class="ev tbd" style="left:${x}px;width:auto;background:#fff;color:#a08640;padding:0 8px" data-id="${e.id}" data-tip="open|${e.id}">nog geen jaar — klik om te plannen</div>`; }
+      h+=`<div class="row"><div class="lab"><span class="dot" style="background:${cat.c}"></span><span class="nm" data-edit="${e.id}" title="Bewerken">${esc(e.name)}</span>${whoBadge(e,null)}<span class="rec" style="color:#a77b00">te plannen</span></div><div class="track" style="width:${W}px">${bg}${bar}</div></div>`; });
+  }
   grid.innerHTML=h;
   // zoom buttons
   document.querySelectorAll("#zoom .btn").forEach(b=>b.classList.toggle("on",+b.dataset.px===ui.px));
@@ -364,7 +375,17 @@ function render(){
 }
 
 const hasSummer = y => VACS.some(v=>v.summer && new Date(v.s*DAY).getUTCFullYear()===y);
+function renderOpen(){
+  const open=state.events.filter(e=>e.unplanned||!e.date).sort((a,b)=>(+a.wishYear||9999)-(+b.wishYear||9999)||a.name.localeCompare(b.name));
+  $("#openCard").style.display=open.length?"block":"none"; $("#openChip").textContent=open.length===1?"1 evenement":`${open.length} evenementen`;
+  $("#openList").innerHTML=open.map(e=>{ const c=CATS[e.cat]||CATS.evenement, o=orgOf(e,null), st=ORG[o.org];
+    return `<li><span class="d" style="color:#a77b00">${e.wishYear?"ergens in "+e.wishYear:"nog geen jaar"}</span><span><span class="pill" style="background:${c.c}">${c.s}</span><b data-edit="${e.id}" style="cursor:pointer">${esc(e.name)}</b>
+      <div class="kind">${+e.prepWeeks?`${e.prepWeeks} weken voorbereiding nodig`:"Voorbereiding nog niet ingeschat"}${e.note?" · "+esc(e.note):""}</div>
+      ${noTeam(e)?"":`<div class="orgline"><span class="st" style="color:${st?st.c:"#999"}">${st?st.nl:"Organisatie niet ingevuld"}</span>${o.contact?` · aanspreekpunt ${esc(o.contact)}`:""}</div>`}</span>
+      <span class="reps"><button class="btn" data-edit="${e.id}" style="padding:4px 10px">Datum kiezen</button></span></li>`; }).join("");
+}
 function renderPanels(){
+  renderOpen();
   const until=TODAY+365, items=[];
   state.events.forEach(e=>{ const pw=+e.prepWeeks||0;
     occurrences(e).forEach(o=>{
@@ -415,6 +436,10 @@ document.addEventListener("mousemove",ev=>{
       html+=`<br>${ms.length} maandagen, waarvan <b>${on}</b> toch repetitie`; if(chk!=null) html+=`<br>⚠ Nog inventariseren${chk?": "+esc(chk):""}`; html+=`<br><i>Klik om aan te passen</i>`; }
     else { const n=REPS.filter(r=>r.st==="ok"&&r.d>=a&&r.d<=b).length; html+= n?`<br>${n} repetitie(s) in deze vakantie — mogelijk minder bezetting`:"<br>Geen repetitie in deze vakantie"; } }
   else if(p[0]==="novac"){ html=`<b>Schoolvakanties nog niet vastgesteld</b><br>Voeg ze toe via de knop <b>Vakanties</b> zodra Rijksoverheid ze publiceert.`; }
+  else if(p[0]==="open"){ const e=state.events.find(x=>x.id===p[1]); if(!e) return; const c=CATS[e.cat]||CATS.evenement, o=orgOf(e,null), st=ORG[o.org];
+    html=`<b>${esc(e.name)}</b><br>${c.nl}<br><span style="color:#F2CF63">Nog in te plannen</span>${e.wishYear?` — gewenst: ${e.wishYear}`:""}`+
+      (+e.prepWeeks?`<br>Voorbereiding nodig: ${e.prepWeeks} weken`:"")+(!noTeam(e)?`<br><span style="color:${st?st.c:"#bbb"};font-weight:700">● ${st?st.nl:"Organisatie niet ingevuld"}</span>${o.contact?` — aanspreekpunt: <b>${esc(o.contact)}</b>`:""}`:"")+
+      (e.note?`<br><i>${esc(e.note)}</i>`:"")+`<br><i>Klik om een datum te kiezen</i>`; }
   else if(p[0]==="busy"){ html=`<b>Week van ${fmtS(+p[1])}</b><br>${p[2]} project(en) tegelijk bezig`; }
   else { const e=state.events.find(x=>x.id===p[1]); if(!e) return; const s=+p[2], en=+p[3], pw=+e.prepWeeks||0, c=CATS[e.cat]||CATS.evenement;
     const tbd=p[4]==="tbd"; const mo=new Date(s*DAY);
@@ -443,16 +468,21 @@ function editEvent(id){
     <label class="full">Naam<input name="name" required value="${esc(e.name)}" placeholder="bijv. Kerstconcert"></label>
     <label>Soort<select name="cat">${Object.entries(CATS).map(([k,c])=>`<option value="${k}" ${k===e.cat?"selected":""}>${c.nl}</option>`).join("")}</select></label>
     <label>Voorbereiding (weken)<input name="prepWeeks" type="number" min="0" max="156" value="${esc(e.prepWeeks)}"></label>
-    <label>Datum (eerste keer of indicatie)<input name="date" type="date" required value="${esc(e.date)}"></label>
-    <label>Einddatum (optioneel)<input name="end" type="date" value="${esc(e.end)}"></label>
-    <label>Herhaling<select name="recur">
+    <label class="full">Planning<select name="plan">
+      <option value="vast" ${!e.unplanned&&!e.tbd?"selected":""}>Datum staat vast</option>
+      <option value="maand" ${!e.unplanned&&e.tbd?"selected":""}>Alleen de maand is bekend</option>
+      <option value="open" ${e.unplanned?"selected":""}>Nog in te plannen (nog geen datum)</option></select></label>
+    <label class="pl-open">Gewenst jaar (optioneel)<input name="wishYear" type="number" min="${Y0}" max="2100" value="${esc(e.wishYear||"")}" placeholder="bijv. ${Y0+1}"></label>
+    <label class="pl-date">Datum (eerste keer of indicatie)<input name="date" type="date" value="${esc(e.date||ds(TODAY+60))}"></label>
+    <label class="pl-date">Einddatum (optioneel)<input name="end" type="date" value="${esc(e.end)}"></label>
+    <label class="pl-date">Herhaling<select name="recur">
       <option value="0" ${+e.recur===0?"selected":""}>Eenmalig</option>
       <option value="1" ${+e.recur===1?"selected":""}>Elk jaar</option>
       <option value="2" ${+e.recur===2?"selected":""}>Om de 2 jaar</option>
       <option value="3" ${+e.recur===3?"selected":""}>Om de 3 jaar</option>
       <option value="5" ${+e.recur===5?"selected":""}>Om de 5 jaar (lustrum)</option></select></label>
-    <label>Herhalen t/m jaar<input name="until" type="number" min="${Y0}" max="2100" value="${esc(e.until)}" placeholder="${Y1}"></label>
-    <label class="chk full"><input type="checkbox" name="tbd" ${e.tbd?"checked":""}> Datum nog niet vastgesteld — gebruik alleen de <b>maand</b> als indicatie</label>
+    <label class="pl-date">Herhalen t/m jaar<input name="until" type="number" min="${Y0}" max="2100" value="${esc(e.until)}" placeholder="${Y1}"></label>
+    <label class="chk full" style="display:none!important"><input type="checkbox" name="tbd" ${e.tbd?"checked":""}> Datum nog niet vastgesteld — gebruik alleen de <b>maand</b> als indicatie</label>
     <div class="peryear" id="peryear" style="display:none"></div>
     <div class="full orgsec" style="grid-column:1/-1;border-top:1px solid var(--line);padding-top:10px;font:700 11px 'Roboto Condensed',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--blue)">Organisatie</div>
     <div class="full orgsec orgMulti small" style="grid-column:1/-1">Dit evenement komt vaker terug: vul de organisatie <b>per keer</b> in, in de lijst hierboven (status, aanspreekpunt en teamleden).</div>
@@ -466,12 +496,15 @@ function editEvent(id){
     <button type="button" class="btn" id="cancel">Annuleren</button><button class="btn primary">Opslaan</button></div></form>`;
   ov.classList.add("show");
   const f=$("#f");
+  const syncPlan=()=>{ const open=f.plan.value==="open"; f.tbd.checked=f.plan.value==="maand"; if(open) f.recur.value="0";
+    document.querySelectorAll(".pl-date").forEach(x=>x.style.display=open?"none":""); document.querySelectorAll(".pl-open").forEach(x=>x.style.display=open?"":"none"); };
+  syncPlan();
   const pd={dates:{...(e.dates||{})}, skip:{...(e.skip||{})}, yr:JSON.parse(JSON.stringify(e.yr||{}))};
   const syncOrg=()=>{ const multi=+f.recur.value>0; document.querySelectorAll(".orgsec").forEach(x=>{ const hide=f.cat.value==="reces"||(multi&&x.classList.contains("orgOne"))||(!multi&&x.classList.contains("orgMulti")); x.style.display=hide?"none":""; }); };
   f.cat.addEventListener("change",()=>{syncOrg();drawPY();}); f.recur.addEventListener("change",syncOrg); syncOrg();
   if(+e.recur>0 && (e.org||e.contact||e.team)){ const y=nextOccY(e); if(y!=null){ const o=pd.yr[y]||(pd.yr[y]={}); if(e.org&&!o.org) o.org=e.org; if(e.contact&&!o.contact) o.contact=e.contact; if(e.team&&!o.team) o.team=e.team; } }
   const drawPY=()=>{ const tmp={date:f.date.value, recur:f.recur.value, until:f.until.value}, ys=occYears(tmp), box=$("#peryear");
-    if(+f.recur.value===0 || !ys.length){ box.style.display="none"; return; }
+    if(+f.recur.value===0 || !ys.length || f.plan.value==="open"){ box.style.display="none"; return; }
     box.style.display="block";
     box.innerHTML=`<div class="small" style="margin-bottom:4px">Per keer: vul de vastgestelde datum in, of sla een jaar over. Lege datum = ${f.tbd.checked?"<b>nog te plannen</b> (maand als indicatie)":"zelfde datum als hierboven"}.${f.cat.value!=="reces"?" De <b>organisatie</b> vul je hier per keer in.":""}</div>`+
       ys.map(y=>{ const o=pd.yr[y]||{}, dis=pd.skip[y]?"disabled":"", reces=f.cat.value==="reces";
@@ -486,8 +519,10 @@ function editEvent(id){
       if(!Object.keys(o).length) delete pd.yr[y]; }
     ev.stopPropagation(); upd(); });
   ["date","recur","until","tbd"].forEach(n=>f[n].addEventListener("change",drawPY));
+  f.plan.addEventListener("change",()=>{ syncPlan(); syncOrg(); drawPY(); upd(); });
   drawPY();
-  const upd=()=>{ const d=f.date.value; if(!d){ $("#calc").textContent=""; return; } const s=dn(d), pw=+f.prepWeeks.value||0;
+  const upd=()=>{ if(f.plan.value==="open"){ const pw=+f.prepWeeks.value||0; $("#calc").innerHTML=`Nog geen datum. Het evenement komt in de lijst <b>Nog in te plannen</b>${pw?` — met ${pw} weken voorbereiding moet de datum minstens zo ver vooruit liggen`:""}.`; return; }
+    const d=f.date.value; if(!d){ $("#calc").textContent=""; return; } const s=dn(d), pw=+f.prepWeeks.value||0;
     if(f.tbd.checked && f.cat.value!=="reces"){ const m=new Date(s*DAY), ms=ymd(m.getUTCFullYear(),m.getUTCMonth(),1); $("#calc").innerHTML = `Datum nog te plannen — indicatie <b>${MONTHS[m.getUTCMonth()]} ${m.getUTCFullYear()}</b>.` + (pw? ` Voorbereiding start dan uiterlijk <b>${fmt(ms-pw*7)}</b> (${repsBetween(ms-pw*7,ms)} repetities tot begin van die maand).`:""); return; }
     $("#calc").innerHTML = f.cat.value==="reces" ? `Alle maandagen van ${fmtS(s)} t/m ${f.end.value?fmtS(dn(f.end.value)):fmtS(s)} vervallen als repetitie.`
       : pw? `Voorbereiding start <b>${fmt(s-pw*7)}</b> — dat zijn <b>${repsBetween(s-pw*7,s)}</b> repetities (eerste keer).` : `Geen voorbereidingstijd ingesteld.`; };
@@ -502,6 +537,8 @@ function editEvent(id){
       prepWeeks:Math.max(0,+f.prepWeeks.value||0), recur:f.recur.value, until:f.until.value, note:f.note.value.trim(), tbd:f.tbd.checked,
       org:f.org.value, contact:f.contact.value.trim(), team:f.team.value.trim() };
     ["org","contact","team"].forEach(k=>{ if(!n[k] || n.cat==="reces" || +n.recur>0) delete n[k]; });
+    if(f.plan.value==="open"){ n.unplanned=true; n.date=""; n.end=""; n.recur="0"; n.until=""; delete n.tbd; if(f.wishYear.value) n.wishYear=+f.wishYear.value; }
+    else if(!n.date){ toast("Vul een datum in, of kies 'Nog in te plannen'"); return; }
     if(+n.recur>0){ const ys=occYears(n); const keep=o=>Object.fromEntries(Object.entries(o).filter(([y])=>ys.includes(+y)));
       const d=keep(pd.dates), k=keep(pd.skip), yr=keep(pd.yr); if(Object.keys(d).length) n.dates=d; if(Object.keys(k).length) n.skip=k; if(Object.keys(yr).length&&n.cat!=="reces") n.yr=yr; }
     if(!n.tbd) delete n.tbd;
@@ -683,7 +720,11 @@ function listItems(R){
       org: noTeam(e)?"": (()=>{ const g=orgOf(e,o.y), st=ORG[g.org]; return [st?st.nl:"Niet ingevuld", g.contact?"Aanspreekpunt: "+g.contact:"", g.team?"Team: "+g.team:""].filter(Boolean).join("\n"); })() }); }));
   VACS.filter(v=>v.summer&&v.e>=R.a&&v.s<R.b).forEach(v=>{ const y=new Date(v.s*DAY).getUTCFullYear(), on=vacMondays(v).filter(d=>state.settings.summerOn[ds(d)]).length, chk=state.settings.summerCheck[y];
     out.push({d:v.s, date:`${fmtS(v.s)} t/m ${fmtS(v.e)}`, name:"Zomerstop (zomervakantie zuid)", cat:"Zomerstop", prep:"–", reps:"", note:(on?`${on} extra repetitie(s) in de vakantie. `:"")+(chk!=null?"Nog inventariseren"+(chk?": "+chk:""):"")}); });
-  return out.sort((a,b)=>a.d-b.d);
+  out.sort((a,b)=>a.d-b.d);
+  state.events.filter(e=>(e.unplanned||!e.date)&&!ui.hidden[e.cat]&&(!e.wishYear||(ymd(+e.wishYear,0,1)<R.b&&ymd(+e.wishYear+1,0,1)>R.a))).forEach(e=>{ const cat=CATS[e.cat]||CATS.evenement, g=orgOf(e,null), st=ORG[g.org];
+    out.push({d:Infinity, date:"Nog in te plannen"+(e.wishYear?" ("+e.wishYear+")":""), name:e.name, cat:cat.nl, prep:+e.prepWeeks?`${e.prepWeeks} wk nodig`:"–", reps:"", note:e.note||"",
+      org: noTeam(e)?"":[st?st.nl:"Niet ingevuld", g.contact?"Aanspreekpunt: "+g.contact:"", g.team?"Team: "+g.team:""].filter(Boolean).join("\n")}); });
+  return out;
 }
 
 let jspdfP=null;
