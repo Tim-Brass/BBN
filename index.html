@@ -155,7 +155,69 @@ table.yrs td.n{text-align:right;font-variant-numeric:tabular-nums}
 .dlg .foot .sp{flex:1}
 .chk{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;color:var(--ink)!important;font-size:13px!important}
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1d2a35;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;z-index:70;display:none}
+.short{display:none}
+/* agenda view */
+.agenda-wrap{padding:6px 18px 14px}
+#agenda{max-width:900px}
+.ag-month{font:800 15px "Roboto Condensed",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);margin:16px 0 4px;padding-bottom:4px;border-bottom:2px solid var(--blue-s)}
+.ag-month:first-child{margin-top:6px}
+.ag{list-style:none;margin:0;padding:0}
+.ag li{display:grid;grid-template-columns:54px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid #F1EEE7;align-items:start}
+.ag li:last-child{border-bottom:0}
+.ag .day{text-align:center;line-height:1.05}
+.ag .day b{display:block;font:800 22px "Roboto Condensed",sans-serif}
+.ag .day span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.ag .what b{font-size:15px}
+.ag .what .kind{font-size:12.5px;color:var(--muted);margin-top:2px}
+.ag li.agvac{opacity:.85}
+.ag li.agvac .what b{font-weight:500;color:#7a5b00}
+.ag li.urg{border-left:4px solid;padding-left:8px}
+.ag li[data-go]{cursor:pointer}
+.ag-more{display:block;margin:14px auto 4px}
+body.view-agenda .tl-only, body.view-agenda .tl-wrap, body.view-agenda .tl-only-card{display:none!important}
+body.view-agenda #agendaWrap{display:block!important}
 @media (max-width:900px){.panels{grid-template-columns:1fr}:root{--lab:160px}.legend{margin-left:0}}
+@media (max-width:760px){
+  html,body{overflow-x:hidden;max-width:100vw}
+  :root{--lab:128px;--row:34px}
+  body{font-size:14px}
+  header.top{flex-wrap:wrap;gap:8px 10px;padding:10px 12px}
+  header.top img{height:34px}
+  header.top h1{font-size:19px}
+  header.top .sub{display:none}
+  header.top .spacer{display:none}
+  .status{order:5;width:100%;font-size:11.5px}
+  header.top .btn{padding:7px 10px}
+  .long{display:none}.short{display:inline}
+  .toolbar{flex-wrap:nowrap;overflow-x:auto;padding:8px 12px;-webkit-overflow-scrolling:touch}
+  .toolbar .btn{flex:none}
+  .legend{display:none}
+  .wrap{margin:0 12px}
+  .alert{margin:0 12px 10px;font-size:13px;flex-wrap:wrap}
+  .panels{margin:12px 12px 30px;gap:12px;grid-template-columns:minmax(0,1fr)!important}
+  .card{min-width:0}
+  .up li{grid-template-columns:74px minmax(0,1fr)!important}
+  .card{padding:14px}
+  .up li{grid-template-columns:74px 1fr;gap:8px}
+  .up li .reps{grid-column:2;text-align:left}
+  .up li.urg{margin-left:-10px}
+  .row .lab{font-size:12px;padding:0 6px 0 8px;gap:5px}
+  .row .lab .rec{display:none}
+  .who{width:19px;height:19px;font-size:9px}
+  .agenda-wrap{padding:4px 12px 12px}
+  .ov{padding:0;align-items:flex-end}
+  .dlg{max-width:100%!important;width:100%;border-radius:14px 14px 0 0;max-height:92vh;overflow-y:auto;overflow-x:hidden}
+  .dlg .body{grid-template-columns:minmax(0,1fr);padding:14px}
+  .dlg .body>*{min-width:0}
+  .dlg input,.dlg select,.dlg textarea{width:100%;min-width:0;box-sizing:border-box}
+  .dlg .foot{flex-wrap:wrap}
+  .dlg input,.dlg select,.dlg textarea{font-size:16px}
+  .peryear .py2{grid-template-columns:1fr 1fr!important}.peryear .py2>span:first-child{display:none}
+  #tip{display:none!important}
+  table.yrs{font-size:12px;table-layout:fixed}
+  table.yrs th{white-space:normal;font-size:9.5px;letter-spacing:.03em;padding:4px 3px}
+  table.yrs td{padding:6px 3px}
+}
 </style>
 </head>
 <body>
@@ -202,7 +264,7 @@ if(!Array.isArray(state.settings.vac)) state.settings.vac = VAC_DEFAULT;
 state.settings.summerOn = state.settings.summerOn || {};
 state.settings.repOv = state.settings.repOv || {};   // {"2027-03-08":{s:"cancel"|"on"|"extra", note, time}}   // {"2027-07-26":true} = repetitie ondanks zomervakantie
 state.settings.summerCheck = state.settings.summerCheck || {}; // {"2027":"notitie"} = nog inventariseren
-let ui = {px:1.3, hidden:{}, vacShade:true};
+let ui = {px:1.3, hidden:{}, vacShade:true, view:null};
 let MIGRATE_ORG = true;
 try{ const s=JSON.parse(localStorage.getItem("bbn-planner-ui")||"{}"); Object.assign(ui,s); }catch(e){}
 function saveUi(){ try{localStorage.setItem("bbn-planner-ui",JSON.stringify(ui));}catch(e){} }
@@ -341,13 +403,14 @@ document.body.insertAdjacentHTML("beforeend",`
   <div class="spacer"></div>
   <span class="status" id="status"></span>
   <button class="btn" id="login">Inloggen</button>
-  <button class="btn primary" id="add">+ Evenement toevoegen</button>
+  <button class="btn primary" id="add">+ <span class="long">Evenement toevoegen</span><span class="short">Nieuw</span></button>
 </header>
 <div class="toolbar">
-  <div class="grp" id="zoom">
+  <div class="grp" id="viewSw"><button class="btn" data-view="tijdlijn">Tijdlijn</button><button class="btn" data-view="agenda">Agenda</button></div>
+  <div class="grp tl-only" id="zoom">
     <button class="btn" data-px="0.55">5 jaar</button><button class="btn" data-px="1.3">2 jaar</button><button class="btn" data-px="3">1 jaar</button><button class="btn" data-px="7">Kwartaal</button>
   </div>
-  <button class="btn" id="goToday">Naar vandaag</button>
+  <button class="btn tl-only" id="goToday">Naar vandaag</button>
   <button class="btn" id="settings">Feestdagen</button>
   <button class="btn" id="vacs">Vakanties</button>
   <button class="btn" id="data">Gegevens</button>
@@ -355,12 +418,13 @@ document.body.insertAdjacentHTML("beforeend",`
   <div class="legend" id="legend"></div>
 </div>
 <div class="alert" id="alert"></div>
-<div class="wrap"><div class="scroller" id="scroller"><div class="grid" id="grid"></div></div></div>
+<div class="wrap agenda-wrap" id="agendaWrap" style="display:none"><div id="agenda"></div></div>
+<div class="wrap tl-wrap"><div class="scroller" id="scroller"><div class="grid" id="grid"></div></div></div>
 <div class="panels">
   <div class="card" id="actCard" style="grid-column:1/-1;display:none;border-color:#efb8b2"><h2 style="color:#C8372D">Actie nodig<span class="chip" id="actChip" style="background:#FBE9E7;color:#9b2a22"></span></h2>
     <p class="small" style="margin:-4px 0 8px">Evenementen waarvan de voorbereiding binnen 12 maanden start en de organisatie nog niet rond is, en evenementen die nog gepland moeten worden.</p><ul class="up" id="actList"></ul></div>
   <div class="card" id="openCard" style="grid-column:1/-1;display:none"><h2>Nog in te plannen<span class="chip" id="openChip"></span></h2><ul class="up" id="openList"></ul></div>
-  <div class="card"><h2>Komende 12 maanden<span class="chip" id="todoChip" style="display:none"></span><span class="chip" id="teamChip" style="display:none;background:#FBE9E7;color:#9b2a22"></span></h2><ul class="up" id="upcoming"></ul></div>
+  <div class="card tl-only-card"><h2>Komende 12 maanden<span class="chip" id="todoChip" style="display:none"></span><span class="chip" id="teamChip" style="display:none;background:#FBE9E7;color:#9b2a22"></span></h2><ul class="up" id="upcoming"></ul></div>
   <div class="card"><h2>Repetities per jaar</h2><table class="yrs" id="yrs"></table>
     <p class="small" id="updated"></p></div>
 </div>
@@ -438,6 +502,9 @@ function render(){
   grid.innerHTML=h;
   // zoom buttons
   document.querySelectorAll("#zoom .btn").forEach(b=>b.classList.toggle("on",+b.dataset.px===ui.px));
+  const view = ui.view || (innerWidth<760? "agenda" : "tijdlijn");
+  document.body.classList.toggle("view-agenda", view==="agenda");
+  document.querySelectorAll("#viewSw .btn").forEach(b=>b.classList.toggle("on", b.dataset.view===view));
   // legend
   $("#legend").innerHTML = Object.entries(CATS).map(([k,c])=>`<span data-cat="${k}" class="${ui.hidden[k]?"off":""}" title="Klik om te tonen/verbergen"><i style="background:${k==="reces"?"repeating-linear-gradient(135deg,#ccc 0 3px,#eee 3px 6px)":c.c}"></i>${c.nl}</span>`).join("")
     + `<span data-vs="1" class="${ui.vacShade?"":"off"}" title="Klik om vakantie-arcering te tonen/verbergen"><i class="vc"></i>Schoolvakantie (zuid)</span><span style="cursor:default"><i class="lp"></i>Voorbereiding</span><span style="cursor:default"><i style="background:#e7c873"></i>Zomerstop</span><span style="cursor:default"><i style="background:#fff;border:2px solid var(--blue);border-radius:50%"></i>Extra / toch repeteren</span><span style="cursor:default"><i style="background:#fff;border:2px solid #C8372D;transform:rotate(45deg) scale(.75)"></i>Geannuleerd</span><span style="cursor:default"><i style="background:var(--red);border-radius:50%"></i>Vervalt (feestdag)</span><span style="cursor:default" title="Rondje met initialen van het aanspreekpunt"><i style="border:2px solid #2E9E6B;border-radius:50%;background:#E7F5EE"></i>Team staat</span><span style="cursor:default"><i style="border:2px solid #D9AE2E;border-radius:50%;background:#FBF3DA"></i>In vorming</span><span style="cursor:default"><i style="border:2px solid #C8372D;border-radius:50%;background:#FBE9E7"></i>Geen team</span>`;
@@ -472,8 +539,42 @@ function renderOpen(){
       ${noTeam(e)?"":`<div class="orgline"><span class="st" style="color:${st?st.c:"#999"}">${st?st.nl:"Organisatie niet ingevuld"}</span>${o.contact?` · aanspreekpunt ${esc(o.contact)}`:""}</div>`}</span>
       <span class="reps"><button class="btn" data-edit="${e.id}" style="padding:4px 10px">Datum kiezen</button></span></li>`; }).join("");
 }
+let agendaAll=false;
+function renderAgenda(){
+  const until = agendaAll? END : TODAY+730, items=[];
+  const push=(d,o)=>items.push(Object.assign({d},o));
+  state.events.forEach(e=>{ if(ui.hidden[e.cat]) return; const pw=+e.prepWeeks||0, c=CATS[e.cat]||CATS.evenement;
+    occurrences(e).forEach(o=>{
+      if(o.e>=TODAY && o.s<until){ const uc=URGMAP[urgKey(e.id,o.y)];
+        push(Math.max(o.s,o.tbd?o.s:o.s), {e, y:o.y, c, tbd:o.tbd, end:o.e>o.s&&!o.tbd?o.e:null, urg:uc&&uc!=="yellow"?uc:null, kind:"ev"}); }
+      if(pw && !nonMusical(e)){ const a=o.s-pw*7; if(a>=TODAY && a<until) push(a,{e, y:o.y, c, kind:"prep", pw, tbd:o.tbd, o:o.s}); }
+    }); });
+  REPS.filter(r=>r.ov&&r.d>=TODAY&&r.d<until).forEach(r=>push(r.d,{kind:"rep", r}));
+  VACS.filter(v=>v.e>=TODAY&&v.s<until).forEach(v=>push(Math.max(v.s,TODAY),{kind:"vac", v}));
+  items.sort((a,b)=>a.d-b.d || (a.kind==="vac")-(b.kind==="vac"));
+  let html="", lastM=null;
+  items.forEach(it=>{
+    const dt=new Date(it.d*DAY), mk=dt.getUTCFullYear()*12+dt.getUTCMonth();
+    if(mk!==lastM){ if(lastM!==null) html+="</ul>"; lastM=mk; html+=`<div class="ag-month">${["januari","februari","maart","april","mei","juni","juli","augustus","september","oktober","november","december"][dt.getUTCMonth()]} ${dt.getUTCFullYear()}</div><ul class="ag">`; }
+    const day = it.tbd&&it.kind==="ev" ? `<b>?</b><span>${MONTHS[dt.getUTCMonth()]}</span>` : `<b>${dt.getUTCDate()}</b><span>${DAYS[dt.getUTCDay()]}</span>`;
+    if(it.kind==="ev"){ const e=it.e, g=orgOf(e,it.y), st=ORG[g.org], U=it.urg?URG[it.urg]:null;
+      const when = it.tbd? "Datum nog plannen (indicatie deze maand)" : it.end? `t/m ${fmt(it.end)}` : e.cat==="repetitie"&&e.note? e.note : "";
+      const orgTxt = noTeam(e)? "" : U? `<div class="kind" style="color:${U.c};font-weight:700">⚠ ${st?st.nl:"Organisatie niet ingevuld"} — team regelen${g.contact?` <span style="font-weight:400;color:var(--muted)">· ${esc(g.contact)}</span>`:""}</div>`
+        : `<div class="kind"><span style="color:${st?st.c:"#999"};font-weight:700">${st?st.nl:"Organisatie niet ingevuld"}</span>${g.contact?` · ${esc(g.contact)}`:""}</div>`;
+      html+=`<li class="${U?"urg":""}" style="${U?"border-left-color:"+U.c:""}" data-go="e" data-edit="${e.id}"><div class="day">${day}</div><div class="what"><span class="pill" style="background:${it.c.c}">${it.c.s}</span><b>${esc(e.name)}</b>${when?`<div class="kind">${esc(when)}</div>`:""}${orgTxt}</div></li>`; }
+    else if(it.kind==="prep"){ html+=`<li data-go="e" data-edit="${it.e.id}"><div class="day">${day}</div><div class="what"><span class="pill" style="background:${it.c.c}99">Start</span><b style="font-weight:500">Voorbereiding ${esc(it.e.name)}</b><div class="kind">${it.pw} weken · ${repsBetween(it.d,it.o)} repetities${it.tbd?" · indicatief, datum nog niet bekend":""}</div></div></li>`; }
+    else if(it.kind==="rep"){ const r=it.r, cnl=r.st==="c";
+      html+=`<li data-go="r" data-rep="${r.d}"><div class="day">${day}</div><div class="what"><span class="pill" style="background:${cnl?"#C8372D":"#0076BE"}">Repetitie</span><b>${cnl?"Repetitie geannuleerd":"Extra repetitie"}</b><div class="kind">${esc(r.why.includes(": ")?r.why.split(": ").slice(1).join(": "):(r.time||""))}</div></div></li>`; }
+    else if(it.kind==="vac"){ const v=it.v, y=new Date(v.s*DAY).getUTCFullYear();
+      html+=`<li class="agvac" ${v.summer?`data-go="s" data-summer="${v.s}"`:""}><div class="day">${day}</div><div class="what"><span class="pill" style="background:#D9AE2E">Vakantie</span><b>${esc(v.n)} (zuid)</b><div class="kind">${fmtS(v.s)} t/m ${fmtS(v.e)}${v.summer?" · geen repetities (zomerstop)":""}${v.summer&&state.settings.summerCheck[y]!=null?" · nog inventariseren":""}</div></div></li>`; }
+  });
+  if(lastM!==null) html+="</ul>";
+  if(!items.length) html=`<p class="small" style="padding:20px 0">Niets gepland in deze periode.</p>`;
+  if(!agendaAll && until<END) html+=`<button class="btn ag-more" id="agMore">Toon alles t/m ${Y1}</button>`;
+  $("#agenda").innerHTML=html;
+}
 function renderPanels(){
-  renderActions(); renderOpen();
+  renderActions(); renderOpen(); renderAgenda();
   const until=TODAY+365, items=[];
   state.events.forEach(e=>{ const pw=+e.prepWeeks||0;
     occurrences(e).forEach(o=>{
@@ -952,7 +1053,7 @@ function setStatus(){
   if(!API){ s.className="status warn"; s.textContent="Niet gekoppeld aan Google Sheet"; b.style.display="none"; return; }
   const t=lastSync? `bijgewerkt ${String(new Date(lastSync).getHours()).padStart(2,"0")}:${String(new Date(lastSync).getMinutes()).padStart(2,"0")}`:"laden…";
   s.className="status "+(PW?"live":"ro"); s.textContent=(PW?"Bewerken aan":"Alleen lezen")+" · "+t;
-  b.textContent=PW?"Uitloggen":"Inloggen om te bewerken";
+  b.innerHTML=PW?"Uitloggen":'Inloggen<span class="long"> om te bewerken</span>';
 }
 async function apiGet(){ const r=await fetch(API+"?action=get"+(READKEY?"&key="+encodeURIComponent(READKEY):"")+"&t="+Date.now()); return r.json(); }
 async function apiPost(body){ const r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)}); return r.json(); }
@@ -1050,7 +1151,10 @@ document.addEventListener("click",e=>{
   if(e.target.id==="vacs") return editVacations();
   const l=e.target.closest("#legend [data-cat]"); if(l){ ui.hidden[l.dataset.cat]=!ui.hidden[l.dataset.cat]; saveUi(); render(); return; }
   const ed=e.target.closest("[data-edit],[data-id]"); if(ed){ tip.style.display="none"; editEvent(ed.dataset.edit||ed.dataset.id); return; }
-  if(e.target.id==="add") return editEvent(null);
+  if(e.target.id==="add" || e.target.closest("#add")) return editEvent(null);
+  const vs=e.target.closest("#viewSw .btn"); if(vs){ ui.view=vs.dataset.view; saveUi(); render(); if(ui.view==="tijdlijn"){ const sc=$("#scroller"); sc.scrollLeft=Math.max(0,(TODAY-START)*ui.px-120); } return; }
+  if(e.target.id==="agMore"){ agendaAll=true; renderAgenda(); return; }
+  if(e.target.closest("#login")&&e.target.id!=="login"){ $("#login").click(); return; }
   if(e.target.id==="addRep"){ return editEvent(null,{cat:"repetitie",name:"Extra repetitie",prepWeeks:0,date:ds(TODAY+14),note:"20.00–22.00"}); }
   const rp=e.target.closest("[data-rep]"); if(rp){ return editRep(+rp.dataset.rep); }
   const rt=e.target.closest(".reptrack"); if(rt){ const day=START+(e.clientX-rt.getBoundingClientRect().left)/ui.px;
