@@ -871,6 +871,28 @@ async function buildPdf(R, cv, paper, withList){
     const head=()=>{ doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(26,26,26); doc.text("Overzicht afspraken "+R.label, M, y+4); y+=10;
       doc.setDrawColor(0,118,190); doc.setLineWidth(.6); doc.line(M,y,pw-M,y); y+=6; doc.setFontSize(9); doc.setTextColor(107,107,107);
       let x=M; cols.forEach(([t,f])=>{ doc.text(t.toUpperCase(), x, y); x+=f*TW; }); y+=3; doc.setDrawColor(228,225,216); doc.setLineWidth(.2); doc.line(M,y,pw-M,y); y+=5; };
+    // ---- Actie nodig ----
+    const acts=URGS.filter(u=>u.level!=="yellow");
+    if(acts.length){
+      const ac=[["Urgentie",0.11],["Wanneer",0.13],["Evenement",0.22],["Wat is er nodig",0.39],["Aanspreekpunt",0.15]];
+      const ahead=()=>{ doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(200,55,45); doc.text("Actie nodig", M, y+4);
+        doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(107,107,107);
+        doc.text(`Stand ${fmtS(TODAY)} — organisatie niet rond (voorbereiding start binnen 12 maanden) en evenementen die nog gepland moeten worden`, M+34, y+4); y+=10;
+        doc.setDrawColor(200,55,45); doc.setLineWidth(.6); doc.line(M,y,pw-M,y); y+=6; doc.setFontSize(9); doc.setTextColor(107,107,107); doc.setFont("helvetica","bold");
+        let x=M; ac.forEach(([t,f])=>{ doc.text(t.toUpperCase(), x, y); x+=f*TW; }); y+=3; doc.setDrawColor(228,225,216); doc.setLineWidth(.2); doc.line(M,y,pw-M,y); y+=5; };
+      ahead(); doc.setFontSize(10);
+      acts.forEach(u=>{ const U=URG[u.level], g=orgOf(u.e,u.y);
+        const when = u.kind==="plan" ? (u.e.wishYear?`ergens in ${u.e.wishYear}`:"nog geen jaar") : (()=>{ const o=occurrences(u.e).find(x=>x.y===u.y), m=new Date(u.s*DAY); return o&&o.tbd? `${MONTHS[m.getUTCMonth()]} ${m.getUTCFullYear()}` : fmtS(u.s); })();
+        const vals=["",when,u.e.name,u.txt,g.contact||"–"]; let lines=1;
+        const wrapped=vals.map((v,i)=>{ doc.setFont("helvetica", i===2?"bold":"normal"); const L=doc.splitTextToSize(String(v), ac[i][1]*TW-3); lines=Math.max(lines,L.length); return L; });
+        const rowH=lines*4.4+2.6; if(y+rowH>ph-M){ doc.addPage(paper,"landscape"); y=M; ahead(); doc.setFontSize(10); }
+        const rgb=U.c.match(/\w\w/g).map(h=>parseInt(h,16));
+        doc.setFillColor(...rgb); doc.roundedRect(M, y-3.6, 22, 5, 2.4, 2.4, "F"); doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.text(U.nl.toUpperCase(), M+11, y, {align:"center"}); doc.setFontSize(10);
+        let x=M+ac[0][1]*TW;
+        wrapped.forEach((L,i)=>{ if(!i) return; doc.setFont("helvetica", i===2?"bold":"normal"); if(i===3) doc.setTextColor(...rgb); else doc.setTextColor(26,26,26); doc.text(L, x, y); x+=ac[i][1]*TW; });
+        y+=rowH-2.6+1; doc.setDrawColor(241,238,231); doc.line(M,y,pw-M,y); y+=4.4; });
+      y+=8; if(y>ph-M-40){ doc.addPage(paper,"landscape"); y=M; }
+    }
     head(); doc.setFontSize(10);
     if(!items.length){ doc.setFont("helvetica","normal"); doc.text("Geen afspraken in deze periode.", M, y); }
     items.forEach(it=>{
