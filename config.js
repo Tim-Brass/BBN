@@ -1,5 +1,5 @@
 // Instellingen voor de BBN-meerjarenplanning.
-// Plak hieronder de URL van de Google Apps Script web-app (eindigt op /exec).
+// URL van de Google Apps Script web-app (eindigt op /exec).
 window.BBN_CONFIG = {
-  api: ""
+  api: "https://script.google.com/macros/s/AKfycbzxPLX_PjT-b13M9M4QZ3n8G4MRIqVdKBoCOeCEdaGbop6pgdye_8tDira7VzZbtPyT/exec"
 };
